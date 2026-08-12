@@ -1,0 +1,1697 @@
+{
+  "aggregate": {
+    "container_bytes": 1153163,
+    "entity_count": 25922,
+    "file_count": 21,
+    "line_count": 234281,
+    "logical_bytes": 1459462,
+    "probe_bytes": 802924,
+    "record_count": 26035,
+    "stages": {
+      "detect_format_bytes": {
+        "byte_basis": "probe",
+        "sum_of_file_medians_ns": 117666,
+        "throughput_mib_s": 6507.640242943347
+      },
+      "read_bytes": {
+        "byte_basis": "logical",
+        "sum_of_file_medians_ns": 1976608445,
+        "throughput_mib_s": 0.7041614279710813
+      },
+      "read_container": {
+        "byte_basis": "container",
+        "sum_of_file_medians_ns": 189347,
+        "throughput_mib_s": 5808.076894431812
+      },
+      "read_path_end_to_end": {
+        "byte_basis": "logical",
+        "sum_of_file_medians_ns": 1988617115,
+        "throughput_mib_s": 0.6999092055842526
+      },
+      "scan_bytes": {
+        "byte_basis": "logical",
+        "sum_of_file_medians_ns": 1776001873,
+        "throughput_mib_s": 0.7836993002827191
+      }
+    }
+  },
+  "environment": {
+    "ezmi": "0.1.0",
+    "machine": "x86_64",
+    "platform": "Linux-6.8.0-136-generic-x86_64-with-glibc2.39",
+    "processor": "x86_64",
+    "python": "3.13.1",
+    "python_implementation": "CPython"
+  },
+  "files": [
+    {
+      "compression": "gzip",
+      "container_size": 87506,
+      "diagnostic_count": 1268,
+      "entity_count": 4499,
+      "line_count": 55160,
+      "logical_size": 393805,
+      "path": "samples/external/ptc-community-mandrel/compressed/am_2d_0.mi",
+      "record_count": 4527,
+      "sha256": "60303e5f6dd38f434fd20b20798b3a9d3d9dfcb0e9883015119db6b3d1b49ecc",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 7627,
+          "median_ns": 6605,
+          "min_ns": 6394,
+          "p95_ns": 11195,
+          "samples_ns": [
+            11195,
+            7438,
+            6605,
+            6507,
+            6394
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 452401674,
+          "median_ns": 452762804,
+          "min_ns": 449742211,
+          "p95_ns": 454119346,
+          "samples_ns": [
+            452762804,
+            449742211,
+            452892577,
+            454119346,
+            452491433
+          ]
+        },
+        "read_container": {
+          "mean_ns": 12366,
+          "median_ns": 11134,
+          "min_ns": 10619,
+          "p95_ns": 17108,
+          "samples_ns": [
+            17108,
+            12186,
+            11134,
+            10619,
+            10786
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 452383278,
+          "median_ns": 452103315,
+          "min_ns": 449798885,
+          "p95_ns": 454503862,
+          "samples_ns": [
+            454503862,
+            449798885,
+            454399855,
+            452103315,
+            451110476
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 417092929,
+          "median_ns": 417231980,
+          "min_ns": 414885707,
+          "p95_ns": 419846799,
+          "samples_ns": [
+            415565011,
+            417231980,
+            417935151,
+            419846799,
+            414885707
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 393805,
+      "diagnostic_count": 1268,
+      "entity_count": 4499,
+      "line_count": 55160,
+      "logical_size": 393805,
+      "path": "samples/external/ptc-community-mandrel/mi/am_2d_0.mi",
+      "record_count": 4527,
+      "sha256": "3bb45897b8cdbb9bc0e82048af65677274548002234c4a0190b4f0f14a1d1d65",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 6659,
+          "median_ns": 6270,
+          "min_ns": 5866,
+          "p95_ns": 8707,
+          "samples_ns": [
+            8707,
+            6270,
+            6330,
+            6125,
+            5866
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 457723786,
+          "median_ns": 457033701,
+          "min_ns": 451207014,
+          "p95_ns": 465157271,
+          "samples_ns": [
+            465157271,
+            459234065,
+            455986882,
+            451207014,
+            457033701
+          ]
+        },
+        "read_container": {
+          "mean_ns": 29028,
+          "median_ns": 26718,
+          "min_ns": 25949,
+          "p95_ns": 38671,
+          "samples_ns": [
+            38671,
+            27453,
+            26718,
+            26351,
+            25949
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 454123201,
+          "median_ns": 452731709,
+          "min_ns": 450942877,
+          "p95_ns": 462564306,
+          "samples_ns": [
+            462564306,
+            450942877,
+            451544107,
+            452731709,
+            452833007
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 415635118,
+          "median_ns": 415565021,
+          "min_ns": 414275037,
+          "p95_ns": 416848303,
+          "samples_ns": [
+            416848303,
+            416079119,
+            415565021,
+            415408113,
+            414275037
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 35603,
+      "diagnostic_count": 1,
+      "entity_count": 918,
+      "line_count": 6712,
+      "logical_size": 35603,
+      "path": "samples/external/takahiro-soarerdex/mi/F100",
+      "record_count": 921,
+      "sha256": "4508e67c00d0f70079c88016a0a43394eef5dd8af3967a8e33e65439db8661b4",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5784,
+          "median_ns": 5442,
+          "min_ns": 5253,
+          "p95_ns": 7408,
+          "samples_ns": [
+            7408,
+            5518,
+            5442,
+            5302,
+            5253
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 58006619,
+          "median_ns": 57931875,
+          "min_ns": 57021675,
+          "p95_ns": 58976227,
+          "samples_ns": [
+            57021675,
+            58976227,
+            58812823,
+            57290497,
+            57931875
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8292,
+          "median_ns": 7546,
+          "min_ns": 7433,
+          "p95_ns": 10772,
+          "samples_ns": [
+            10772,
+            8262,
+            7546,
+            7451,
+            7433
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 58131639,
+          "median_ns": 57936917,
+          "min_ns": 56119500,
+          "p95_ns": 60451862,
+          "samples_ns": [
+            58388692,
+            57936917,
+            57761228,
+            56119500,
+            60451862
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 50922863,
+          "median_ns": 50755498,
+          "min_ns": 50610807,
+          "p95_ns": 51417160,
+          "samples_ns": [
+            51417160,
+            50725095,
+            50610807,
+            50755498,
+            51105756
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 36201,
+      "diagnostic_count": 1,
+      "entity_count": 913,
+      "line_count": 6648,
+      "logical_size": 36201,
+      "path": "samples/external/takahiro-soarerdex/mi/F125",
+      "record_count": 916,
+      "sha256": "29d4934790c6727ec988b16160d9c8af3396d3cdacce8ddc08e83c464e576e2c",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5696,
+          "median_ns": 5233,
+          "min_ns": 5029,
+          "p95_ns": 6874,
+          "samples_ns": [
+            6874,
+            6198,
+            5149,
+            5233,
+            5029
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 57900244,
+          "median_ns": 57514554,
+          "min_ns": 57122695,
+          "p95_ns": 59011930,
+          "samples_ns": [
+            58563238,
+            59011930,
+            57122695,
+            57288807,
+            57514554
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8847,
+          "median_ns": 8338,
+          "min_ns": 7660,
+          "p95_ns": 12030,
+          "samples_ns": [
+            12030,
+            8484,
+            8338,
+            7660,
+            7724
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 57841401,
+          "median_ns": 57823086,
+          "min_ns": 57092516,
+          "p95_ns": 58321556,
+          "samples_ns": [
+            57823086,
+            57755552,
+            57092516,
+            58321556,
+            58214297
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 50722786,
+          "median_ns": 50511407,
+          "min_ns": 49844604,
+          "p95_ns": 52289948,
+          "samples_ns": [
+            49844604,
+            50515868,
+            50452104,
+            50511407,
+            52289948
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 37463,
+      "diagnostic_count": 1,
+      "entity_count": 932,
+      "line_count": 6851,
+      "logical_size": 37463,
+      "path": "samples/external/takahiro-soarerdex/mi/F160",
+      "record_count": 935,
+      "sha256": "ad8f3dc28c3351ded908fdcd92909f59a8955176df0161a45d91d6320be005cc",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5794,
+          "median_ns": 5389,
+          "min_ns": 5122,
+          "p95_ns": 7701,
+          "samples_ns": [
+            7701,
+            5389,
+            5122,
+            5170,
+            5588
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 57809524,
+          "median_ns": 58035400,
+          "min_ns": 57010326,
+          "p95_ns": 58202923,
+          "samples_ns": [
+            58035400,
+            58068671,
+            58202923,
+            57010326,
+            57730302
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8831,
+          "median_ns": 8423,
+          "min_ns": 7807,
+          "p95_ns": 11367,
+          "samples_ns": [
+            11367,
+            8518,
+            8423,
+            8043,
+            7807
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 58596710,
+          "median_ns": 58352201,
+          "min_ns": 58072186,
+          "p95_ns": 59222767,
+          "samples_ns": [
+            58299430,
+            58352201,
+            58072186,
+            59036967,
+            59222767
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 49790499,
+          "median_ns": 51315104,
+          "min_ns": 46856266,
+          "p95_ns": 52284983,
+          "samples_ns": [
+            51392156,
+            46856266,
+            47103988,
+            51315104,
+            52284983
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 36392,
+      "diagnostic_count": 1,
+      "entity_count": 912,
+      "line_count": 6638,
+      "logical_size": 36392,
+      "path": "samples/external/takahiro-soarerdex/mi/F200",
+      "record_count": 915,
+      "sha256": "2d3712fad8003d5ec3df66ac6a63b3ba7394554768d496e8e9d9781950e2bf47",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5574,
+          "median_ns": 5528,
+          "min_ns": 4819,
+          "p95_ns": 6964,
+          "samples_ns": [
+            6964,
+            5550,
+            5528,
+            4819,
+            5011
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 56415567,
+          "median_ns": 56220096,
+          "min_ns": 55921039,
+          "p95_ns": 57007633,
+          "samples_ns": [
+            55921039,
+            56155265,
+            56220096,
+            57007633,
+            56773802
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8387,
+          "median_ns": 7652,
+          "min_ns": 7342,
+          "p95_ns": 11039,
+          "samples_ns": [
+            11039,
+            8396,
+            7652,
+            7510,
+            7342
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 57221688,
+          "median_ns": 57421735,
+          "min_ns": 55874526,
+          "p95_ns": 58223033,
+          "samples_ns": [
+            57547552,
+            58223033,
+            57421735,
+            57041594,
+            55874526
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 50081944,
+          "median_ns": 50322112,
+          "min_ns": 49265044,
+          "p95_ns": 50790847,
+          "samples_ns": [
+            49624019,
+            49265044,
+            50322112,
+            50790847,
+            50407701
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 33408,
+      "diagnostic_count": 1,
+      "entity_count": 923,
+      "line_count": 6800,
+      "logical_size": 33408,
+      "path": "samples/external/takahiro-soarerdex/mi/F50",
+      "record_count": 926,
+      "sha256": "f4fb9b938d7cfa1cd5d0cd3e876c61277b373bb94bd22fa9bdc08ed7ca45a5c4",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5702,
+          "median_ns": 5249,
+          "min_ns": 4851,
+          "p95_ns": 7519,
+          "samples_ns": [
+            7519,
+            5714,
+            5249,
+            5181,
+            4851
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 58429624,
+          "median_ns": 58370425,
+          "min_ns": 57960279,
+          "p95_ns": 59014639,
+          "samples_ns": [
+            59014639,
+            58497826,
+            57960279,
+            58304953,
+            58370425
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8548,
+          "median_ns": 8068,
+          "min_ns": 7540,
+          "p95_ns": 11180,
+          "samples_ns": [
+            11180,
+            8150,
+            8068,
+            7806,
+            7540
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 61155893,
+          "median_ns": 61301934,
+          "min_ns": 59233650,
+          "p95_ns": 62986141,
+          "samples_ns": [
+            59233650,
+            61301934,
+            62986141,
+            62429120,
+            59828624
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 50794000,
+          "median_ns": 51225346,
+          "min_ns": 49805478,
+          "p95_ns": 51270700,
+          "samples_ns": [
+            51270700,
+            49805478,
+            51225346,
+            51237517,
+            50430960
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 37441,
+      "diagnostic_count": 1,
+      "entity_count": 1014,
+      "line_count": 7458,
+      "logical_size": 37441,
+      "path": "samples/external/takahiro-soarerdex/mi/F63",
+      "record_count": 1017,
+      "sha256": "d62bab1f3b328f74c65e96cc3835ece3e74da42d7bde87c6b1a28be0199d8e6a",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 6180,
+          "median_ns": 5924,
+          "min_ns": 5559,
+          "p95_ns": 7549,
+          "samples_ns": [
+            7549,
+            5559,
+            5924,
+            6037,
+            5831
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 66798417,
+          "median_ns": 67011342,
+          "min_ns": 65527477,
+          "p95_ns": 67458377,
+          "samples_ns": [
+            65527477,
+            66838739,
+            67156150,
+            67458377,
+            67011342
+          ]
+        },
+        "read_container": {
+          "mean_ns": 9029,
+          "median_ns": 8705,
+          "min_ns": 8047,
+          "p95_ns": 11506,
+          "samples_ns": [
+            11506,
+            8816,
+            8705,
+            8047,
+            8074
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 70345229,
+          "median_ns": 69803037,
+          "min_ns": 67986500,
+          "p95_ns": 73522609,
+          "samples_ns": [
+            69803037,
+            73522609,
+            72121991,
+            67986500,
+            68292010
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 59010336,
+          "median_ns": 58815625,
+          "min_ns": 58003080,
+          "p95_ns": 60084106,
+          "samples_ns": [
+            58003080,
+            60084106,
+            58815625,
+            58624786,
+            59524085
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 32677,
+      "diagnostic_count": 1,
+      "entity_count": 868,
+      "line_count": 6370,
+      "logical_size": 32677,
+      "path": "samples/external/takahiro-soarerdex/mi/F80",
+      "record_count": 871,
+      "sha256": "996f836899235236aacff43cbfd8f111c0b8c26fd1845ab4225c0415793f8c2c",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5359,
+          "median_ns": 5003,
+          "min_ns": 4877,
+          "p95_ns": 6710,
+          "samples_ns": [
+            6710,
+            5263,
+            4942,
+            4877,
+            5003
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 54954978,
+          "median_ns": 55284342,
+          "min_ns": 53883876,
+          "p95_ns": 55814629,
+          "samples_ns": [
+            55517483,
+            55284342,
+            53883876,
+            54274562,
+            55814629
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8372,
+          "median_ns": 7671,
+          "min_ns": 7275,
+          "p95_ns": 11236,
+          "samples_ns": [
+            11236,
+            8186,
+            7671,
+            7495,
+            7275
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 56810614,
+          "median_ns": 56195964,
+          "min_ns": 54926860,
+          "p95_ns": 58830692,
+          "samples_ns": [
+            56006189,
+            58830692,
+            58093365,
+            54926860,
+            56195964
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 48931262,
+          "median_ns": 49189085,
+          "min_ns": 47337364,
+          "p95_ns": 50085747,
+          "samples_ns": [
+            48629012,
+            49189085,
+            47337364,
+            49415102,
+            50085747
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 24295,
+      "diagnostic_count": 1,
+      "entity_count": 632,
+      "line_count": 4614,
+      "logical_size": 24295,
+      "path": "samples/external/takahiro-soarerdex/mi/S100",
+      "record_count": 635,
+      "sha256": "ae2b09b692599d38dabccd64e58d0c2ea243daa5ad6704d7e7759ecae822945f",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5363,
+          "median_ns": 4684,
+          "min_ns": 4644,
+          "p95_ns": 7713,
+          "samples_ns": [
+            7713,
+            5104,
+            4644,
+            4684,
+            4674
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 39258572,
+          "median_ns": 39371882,
+          "min_ns": 38664932,
+          "p95_ns": 39536529,
+          "samples_ns": [
+            39527161,
+            39371882,
+            39536529,
+            39192359,
+            38664932
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8142,
+          "median_ns": 7246,
+          "min_ns": 7168,
+          "p95_ns": 11361,
+          "samples_ns": [
+            11361,
+            7737,
+            7246,
+            7168,
+            7201
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 40467457,
+          "median_ns": 40668237,
+          "min_ns": 39378656,
+          "p95_ns": 41252148,
+          "samples_ns": [
+            39378656,
+            40207725,
+            40668237,
+            40830523,
+            41252148
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 35128656,
+          "median_ns": 34808301,
+          "min_ns": 34575233,
+          "p95_ns": 36249924,
+          "samples_ns": [
+            34717521,
+            34575233,
+            35292305,
+            36249924,
+            34808301
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 25499,
+      "diagnostic_count": 1,
+      "entity_count": 656,
+      "line_count": 4796,
+      "logical_size": 25499,
+      "path": "samples/external/takahiro-soarerdex/mi/S125",
+      "record_count": 659,
+      "sha256": "a1985af5e6b72e4c3e135548f14792fa24d308db491fb914ac521fc65e9b3e0c",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5722,
+          "median_ns": 5197,
+          "min_ns": 5074,
+          "p95_ns": 7236,
+          "samples_ns": [
+            7236,
+            5952,
+            5074,
+            5197,
+            5155
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 42218761,
+          "median_ns": 42077620,
+          "min_ns": 41433513,
+          "p95_ns": 43388631,
+          "samples_ns": [
+            42077620,
+            41832485,
+            41433513,
+            42361559,
+            43388631
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8453,
+          "median_ns": 7713,
+          "min_ns": 7494,
+          "p95_ns": 11254,
+          "samples_ns": [
+            11254,
+            8309,
+            7713,
+            7494,
+            7497
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 41717465,
+          "median_ns": 41419168,
+          "min_ns": 41374210,
+          "p95_ns": 42637625,
+          "samples_ns": [
+            41419168,
+            41756198,
+            42637625,
+            41400127,
+            41374210
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 36546103,
+          "median_ns": 36656137,
+          "min_ns": 36093869,
+          "p95_ns": 37090709,
+          "samples_ns": [
+            36710990,
+            36656137,
+            37090709,
+            36093869,
+            36178814
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 29593,
+      "diagnostic_count": 1,
+      "entity_count": 733,
+      "line_count": 5433,
+      "logical_size": 29593,
+      "path": "samples/external/takahiro-soarerdex/mi/S40",
+      "record_count": 736,
+      "sha256": "1b27a0a7013c311e01b412c79ba0d138c609798976a9165bbbbc3a15e0542907",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 6166,
+          "median_ns": 6151,
+          "min_ns": 5382,
+          "p95_ns": 7656,
+          "samples_ns": [
+            7656,
+            6151,
+            5382,
+            5392,
+            6251
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 46894337,
+          "median_ns": 47092975,
+          "min_ns": 45854403,
+          "p95_ns": 48444792,
+          "samples_ns": [
+            45854403,
+            48444792,
+            45925872,
+            47153644,
+            47092975
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8735,
+          "median_ns": 7978,
+          "min_ns": 7793,
+          "p95_ns": 11405,
+          "samples_ns": [
+            11405,
+            8668,
+            7793,
+            7978,
+            7833
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 46415035,
+          "median_ns": 46412488,
+          "min_ns": 46057523,
+          "p95_ns": 46755570,
+          "samples_ns": [
+            46755570,
+            46283359,
+            46566238,
+            46412488,
+            46057523
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 41144778,
+          "median_ns": 40944180,
+          "min_ns": 40132271,
+          "p95_ns": 42743778,
+          "samples_ns": [
+            42743778,
+            40132271,
+            41246447,
+            40657216,
+            40944180
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 30196,
+      "diagnostic_count": 1,
+      "entity_count": 776,
+      "line_count": 5748,
+      "logical_size": 30196,
+      "path": "samples/external/takahiro-soarerdex/mi/S50",
+      "record_count": 779,
+      "sha256": "9c4eb09417559ff94572a19ff7f7339f3c4f96c5812b97fe86f14aa8fa615dc2",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5472,
+          "median_ns": 5095,
+          "min_ns": 4851,
+          "p95_ns": 6864,
+          "samples_ns": [
+            6864,
+            5095,
+            5632,
+            4920,
+            4851
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 49510976,
+          "median_ns": 49713675,
+          "min_ns": 48806740,
+          "p95_ns": 49942945,
+          "samples_ns": [
+            48806740,
+            49942945,
+            49713675,
+            49201788,
+            49889733
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8257,
+          "median_ns": 7674,
+          "min_ns": 7291,
+          "p95_ns": 10565,
+          "samples_ns": [
+            10565,
+            8334,
+            7674,
+            7291,
+            7424
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 49129765,
+          "median_ns": 49198471,
+          "min_ns": 48527563,
+          "p95_ns": 49723667,
+          "samples_ns": [
+            48527563,
+            49723667,
+            49265978,
+            49198471,
+            48933149
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 43499472,
+          "median_ns": 43537226,
+          "min_ns": 43107095,
+          "p95_ns": 43848878,
+          "samples_ns": [
+            43107095,
+            43347784,
+            43656380,
+            43848878,
+            43537226
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 30390,
+      "diagnostic_count": 1,
+      "entity_count": 797,
+      "line_count": 5884,
+      "logical_size": 30390,
+      "path": "samples/external/takahiro-soarerdex/mi/S63",
+      "record_count": 800,
+      "sha256": "202a39d2b255159fc62263e81f23cadfcc34061c8ef662a092bf29a6fe5c3754",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5197,
+          "median_ns": 4786,
+          "min_ns": 4493,
+          "p95_ns": 6642,
+          "samples_ns": [
+            6642,
+            5495,
+            4786,
+            4569,
+            4493
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 50553638,
+          "median_ns": 50585786,
+          "min_ns": 49630690,
+          "p95_ns": 51972378,
+          "samples_ns": [
+            49630690,
+            51972378,
+            49711893,
+            50867443,
+            50585786
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8136,
+          "median_ns": 7593,
+          "min_ns": 6943,
+          "p95_ns": 11433,
+          "samples_ns": [
+            11433,
+            7593,
+            7760,
+            6943,
+            6951
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 50045568,
+          "median_ns": 49974596,
+          "min_ns": 49258260,
+          "p95_ns": 50789576,
+          "samples_ns": [
+            50470606,
+            50789576,
+            49974596,
+            49258260,
+            49734802
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 44415011,
+          "median_ns": 44444777,
+          "min_ns": 43490094,
+          "p95_ns": 45561092,
+          "samples_ns": [
+            43490094,
+            43785276,
+            44444777,
+            45561092,
+            44793818
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 23175,
+      "diagnostic_count": 1,
+      "entity_count": 630,
+      "line_count": 4606,
+      "logical_size": 23175,
+      "path": "samples/external/takahiro-soarerdex/mi/S80",
+      "record_count": 633,
+      "sha256": "d0cc58bad8445a72232d41fb7bf76636ebd98b2b5b265729025dd33b313f1c5a",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 7140,
+          "median_ns": 7309,
+          "min_ns": 6738,
+          "p95_ns": 7535,
+          "samples_ns": [
+            7347,
+            7535,
+            7309,
+            6771,
+            6738
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 39434769,
+          "median_ns": 39675844,
+          "min_ns": 38650508,
+          "p95_ns": 40090188,
+          "samples_ns": [
+            38650508,
+            39675844,
+            39950419,
+            40090188,
+            38806887
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8158,
+          "median_ns": 7530,
+          "min_ns": 7313,
+          "p95_ns": 10752,
+          "samples_ns": [
+            10752,
+            7846,
+            7530,
+            7351,
+            7313
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 39695154,
+          "median_ns": 39931654,
+          "min_ns": 38976586,
+          "p95_ns": 40173684,
+          "samples_ns": [
+            39300527,
+            40173684,
+            39931654,
+            38976586,
+            40093321
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 34579027,
+          "median_ns": 34753430,
+          "min_ns": 33762435,
+          "p95_ns": 34919875,
+          "samples_ns": [
+            33762435,
+            34919875,
+            34753430,
+            34876339,
+            34583056
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 38932,
+      "diagnostic_count": 1,
+      "entity_count": 1029,
+      "line_count": 7517,
+      "logical_size": 38932,
+      "path": "samples/external/takahiro-soarerdex/mi/T100",
+      "record_count": 1032,
+      "sha256": "f9c04d230a9f33c6d26875307afc542dd41373a94999f0a96a4397ff48678f79",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5655,
+          "median_ns": 5489,
+          "min_ns": 4993,
+          "p95_ns": 7001,
+          "samples_ns": [
+            7001,
+            5489,
+            5725,
+            5071,
+            4993
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 64909892,
+          "median_ns": 65050367,
+          "min_ns": 61512059,
+          "p95_ns": 67923226,
+          "samples_ns": [
+            64637464,
+            61512059,
+            65426344,
+            65050367,
+            67923226
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8833,
+          "median_ns": 8013,
+          "min_ns": 7744,
+          "p95_ns": 11994,
+          "samples_ns": [
+            11994,
+            8531,
+            7886,
+            7744,
+            8013
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 65009351,
+          "median_ns": 66134381,
+          "min_ns": 61790594,
+          "p95_ns": 66697434,
+          "samples_ns": [
+            66134381,
+            63964236,
+            66460113,
+            66697434,
+            61790594
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 57344941,
+          "median_ns": 57169968,
+          "min_ns": 56433669,
+          "p95_ns": 58678823,
+          "samples_ns": [
+            56433669,
+            57276517,
+            57165729,
+            58678823,
+            57169968
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 44633,
+      "diagnostic_count": 1,
+      "entity_count": 1031,
+      "line_count": 7543,
+      "logical_size": 44633,
+      "path": "samples/external/takahiro-soarerdex/mi/T125",
+      "record_count": 1034,
+      "sha256": "6c124c6a6a92d8f069cd850527db780d98221f3e325d8e3f83db55166ecd8dcd",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 6203,
+          "median_ns": 5881,
+          "min_ns": 5390,
+          "p95_ns": 7515,
+          "samples_ns": [
+            7515,
+            6506,
+            5881,
+            5390,
+            5727
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 64673776,
+          "median_ns": 64387805,
+          "min_ns": 63900852,
+          "p95_ns": 65934437,
+          "samples_ns": [
+            64255303,
+            65934437,
+            64387805,
+            64890483,
+            63900852
+          ]
+        },
+        "read_container": {
+          "mean_ns": 9126,
+          "median_ns": 8355,
+          "min_ns": 8097,
+          "p95_ns": 12255,
+          "samples_ns": [
+            12255,
+            8776,
+            8355,
+            8097,
+            8148
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 66294681,
+          "median_ns": 66184987,
+          "min_ns": 65039575,
+          "p95_ns": 67569006,
+          "samples_ns": [
+            67345257,
+            65334584,
+            67569006,
+            66184987,
+            65039575
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 58101764,
+          "median_ns": 57991365,
+          "min_ns": 57123286,
+          "p95_ns": 59204226,
+          "samples_ns": [
+            57267294,
+            57991365,
+            59204226,
+            58922652,
+            57123286
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 39620,
+      "diagnostic_count": 1,
+      "entity_count": 1043,
+      "line_count": 7594,
+      "logical_size": 39620,
+      "path": "samples/external/takahiro-soarerdex/mi/T160",
+      "record_count": 1046,
+      "sha256": "35e81cb689f2e20dc4fa0b7bb59a54f6cba95d9084e69e44bd990440584f38d8",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5566,
+          "median_ns": 5274,
+          "min_ns": 5128,
+          "p95_ns": 6794,
+          "samples_ns": [
+            6794,
+            5274,
+            5128,
+            5419,
+            5219
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 66124954,
+          "median_ns": 65599176,
+          "min_ns": 65269625,
+          "p95_ns": 67178171,
+          "samples_ns": [
+            66991548,
+            67178171,
+            65586252,
+            65269625,
+            65599176
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8573,
+          "median_ns": 7946,
+          "min_ns": 7826,
+          "p95_ns": 10890,
+          "samples_ns": [
+            10890,
+            8365,
+            7946,
+            7826,
+            7841
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 65626656,
+          "median_ns": 65927637,
+          "min_ns": 64566123,
+          "p95_ns": 66066018,
+          "samples_ns": [
+            65941590,
+            65631915,
+            64566123,
+            65927637,
+            66066018
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 58626344,
+          "median_ns": 58665366,
+          "min_ns": 57644793,
+          "p95_ns": 59643522,
+          "samples_ns": [
+            57663588,
+            59643522,
+            59514453,
+            57644793,
+            58665366
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 48582,
+      "diagnostic_count": 1,
+      "entity_count": 1032,
+      "line_count": 7520,
+      "logical_size": 48582,
+      "path": "samples/external/takahiro-soarerdex/mi/T200",
+      "record_count": 1035,
+      "sha256": "bdbac3b8984d590c9e99da9680453e5f635098ee9179d1ded83705006abf82c4",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5991,
+          "median_ns": 5764,
+          "min_ns": 5443,
+          "p95_ns": 7182,
+          "samples_ns": [
+            7182,
+            5764,
+            5839,
+            5443,
+            5731
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 66586820,
+          "median_ns": 66650803,
+          "min_ns": 56770634,
+          "p95_ns": 75600987,
+          "samples_ns": [
+            75600987,
+            70606694,
+            66650803,
+            63304984,
+            56770634
+          ]
+        },
+        "read_container": {
+          "mean_ns": 9009,
+          "median_ns": 8301,
+          "min_ns": 8136,
+          "p95_ns": 11221,
+          "samples_ns": [
+            11221,
+            9146,
+            8301,
+            8245,
+            8136
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 64566111,
+          "median_ns": 64947906,
+          "min_ns": 62606995,
+          "p95_ns": 65558632,
+          "samples_ns": [
+            62606995,
+            64408166,
+            64947906,
+            65308858,
+            65558632
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 57194723,
+          "median_ns": 57573023,
+          "min_ns": 56138601,
+          "p95_ns": 58163485,
+          "samples_ns": [
+            57581027,
+            58163485,
+            56138601,
+            56517483,
+            57573023
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 45612,
+      "diagnostic_count": 1,
+      "entity_count": 1048,
+      "line_count": 7650,
+      "logical_size": 45612,
+      "path": "samples/external/takahiro-soarerdex/mi/T250",
+      "record_count": 1051,
+      "sha256": "5465caea5b6da9b1c8fb5cd9d19b6d4fc8ea824db0a1b709b3bba30fa0423cac",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5971,
+          "median_ns": 5847,
+          "min_ns": 5249,
+          "p95_ns": 7470,
+          "samples_ns": [
+            7470,
+            5847,
+            5249,
+            5986,
+            5306
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 61555084,
+          "median_ns": 61057623,
+          "min_ns": 58408458,
+          "p95_ns": 65219526,
+          "samples_ns": [
+            65219526,
+            64601115,
+            58488702,
+            61057623,
+            58408458
+          ]
+        },
+        "read_container": {
+          "mean_ns": 10440,
+          "median_ns": 8568,
+          "min_ns": 7982,
+          "p95_ns": 14984,
+          "samples_ns": [
+            12507,
+            14984,
+            8568,
+            8163,
+            7982
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 67804713,
+          "median_ns": 67254380,
+          "min_ns": 65593981,
+          "p95_ns": 72004681,
+          "samples_ns": [
+            72004681,
+            65593981,
+            66720542,
+            67254380,
+            67449985
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 56845511,
+          "median_ns": 57495267,
+          "min_ns": 53412277,
+          "p95_ns": 60129044,
+          "samples_ns": [
+            60129044,
+            54264357,
+            53412277,
+            58926613,
+            57495267
+          ]
+        }
+      }
+    },
+    {
+      "compression": null,
+      "container_size": 42140,
+      "diagnostic_count": 1,
+      "entity_count": 1037,
+      "line_count": 7579,
+      "logical_size": 42140,
+      "path": "samples/external/takahiro-soarerdex/mi/T80",
+      "record_count": 1040,
+      "sha256": "5377cc09f8a28a1800379abbbf28392241104b2cbdc556a335c1972fe0b2776d",
+      "stages": {
+        "detect_format_bytes": {
+          "mean_ns": 5865,
+          "median_ns": 5546,
+          "min_ns": 5223,
+          "p95_ns": 7242,
+          "samples_ns": [
+            7242,
+            5546,
+            5947,
+            5369,
+            5223
+          ]
+        },
+        "read_bytes": {
+          "mean_ns": 65370516,
+          "median_ns": 65180350,
+          "min_ns": 64455751,
+          "p95_ns": 67379950,
+          "samples_ns": [
+            65180350,
+            64458432,
+            65378099,
+            64455751,
+            67379950
+          ]
+        },
+        "read_container": {
+          "mean_ns": 8885,
+          "median_ns": 8175,
+          "min_ns": 8008,
+          "p95_ns": 11686,
+          "samples_ns": [
+            11686,
+            8521,
+            8175,
+            8036,
+            8008
+          ]
+        },
+        "read_path_end_to_end": {
+          "mean_ns": 65860729,
+          "median_ns": 66893312,
+          "min_ns": 61833301,
+          "p95_ns": 68176993,
+          "samples_ns": [
+            66893312,
+            68176993,
+            64281490,
+            61833301,
+            68118551
+          ]
+        },
+        "scan_bytes": {
+          "mean_ns": 57027278,
+          "median_ns": 57031655,
+          "min_ns": 56084732,
+          "p95_ns": 58195189,
+          "samples_ns": [
+            56471281,
+            56084732,
+            57031655,
+            57353537,
+            58195189
+          ]
+        }
+      }
+    }
+  ],
+  "generated_at": "2026-08-12T14:53:32.318817+00:00",
+  "repeat": 5,
+  "schema_version": 1,
+  "stage_descriptions": {
+    "detect_format_bytes": "ezmi.detect_format(bytes); signature/probe only",
+    "read_bytes": "ezmi.read(bytes); decompression, raw and semantic parse, Python model",
+    "read_container": "Path.read_bytes(); container I/O only",
+    "read_path_end_to_end": "ezmi.read(path); I/O through complete semantic Python model",
+    "scan_bytes": "ezmi.scan(bytes); decompression, raw scan, and Python raw model"
+  },
+  "warmup": 1
+}

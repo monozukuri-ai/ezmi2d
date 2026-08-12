@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "crates/ezmi-core",
+    "crates/ezmi-python",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+authors = ["neka-nat <nekanat.stock@gmail.com>"]
+description = "Lossless reader for PTC Creo Elements/Direct Drafting MI files"
+repository = "https://github.com/monozukuri-ai/ezmi"
+license = "MIT"
+
+[workspace.dependencies]
+pyo3 = { version = "0.29.0", features = ["abi3-py310"] }
+

@@ -1,0 +1,14 @@
+/target/
+/dist/
+/.venv/
+/.wheel-venv/
+/.pytest_cache/
+/.ruff_cache/
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+
+/fuzz/artifacts/
+/fuzz/corpus/
+/fuzz/target/

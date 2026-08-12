@@ -1,0 +1,111 @@
+schema_version = 1
+last_verified = "2026-08-12"
+
+[[corpus]]
+id = "takahiro-soarerdex-me10-v2.10"
+description = "SoarerDex product drawings: 19 legacy HP ME10 MI files and matching DXF files"
+source_page = "https://www.takahiro.co.jp/product/sd_cad.html"
+publisher = "TAKAHIRO ENGINEERING WORKS LTD."
+license_status = "Download offered by publisher; no redistribution license found; site states All Rights Reserved"
+repository_policy = "download-only; samples/external is gitignored"
+
+[corpus.mi_archive]
+url = "https://www.takahiro.co.jp/en/product/cad/me10/index.zip"
+sha256 = "5b56a6777e8bc6c5023c31e3ee503f67d7fdd4a3cb9e35e79c284bb977c6a30d"
+file_count = 19
+uncompressed_bytes = 671852
+producer = "HP ME10 Rev. 05.02A 30-Jan-93"
+mi_version = "2.10"
+declared_encoding = ""
+observed_encoding = "CP932 strict-decodable, with Japanese bytes; compatible with the expected Japanese Shift_JIS locale"
+line_endings = "CRLF"
+first_marker = "#~2"
+last_marker = "##~~"
+files = [
+  "F100", "F125", "F160", "F200", "F50", "F63", "F80",
+  "S100", "S125", "S40", "S50", "S63", "S80",
+  "T100", "T125", "T160", "T200", "T250", "T80",
+]
+
+[corpus.mi_archive.observed_entities]
+P = 10166
+LIN = 4030
+ARC = 1059
+FIL = 353
+CIR = 1196
+BSPL = 6
+TEX = 57
+
+[corpus.mi_archive.phase3_validation]
+detected_encoding = "shift_jis heuristic for all 19 files"
+strict_text_decode = "57 of 57 TEX records; no replacement characters"
+paired_dxf_text = "57 of 57 content, insertion point, and height tuples matched"
+remaining_raw_entity_types = ["FIL", "BSPL"]
+
+[corpus.mi_archive.phase5_validation]
+typed_fillets = 353
+typed_bsplines = 6
+bspline_interpolation_samples = 36
+remaining_raw_entity_types = []
+paired_dxf_fillets = "all FIL center/start/end tuples equal the additional DXF ARC multiset"
+paired_dxf_bsplines = "all corresponding DXF POLYLINE vertices lie on the decoded B-splines within 1e-8"
+
+[corpus.dxf_archive]
+url = "https://www.takahiro.co.jp/en/product/cad/dxf/index.zip"
+sha256 = "cd3fdd2097f3b89e15669878ba0d8000ccfcd204e4f880987965b2efc4bda65a"
+file_count = 19
+uncompressed_bytes = 860722
+filename_pattern = "<matching MI basename>.DXF"
+
+[[corpus]]
+id = "ptc-community-mandrel-creo-18.1"
+description = "Creo bundle containing one product-generated gzip-compressed 2D MI stream"
+source_page = "https://community.ptc.com/3d-part-assembly-design-327/error-opening-bdl-file-files-does-not-contain-a-valid-drawing-80415"
+attachment_url = "https://community.ptc.com/topic/trackAttachment?file_uuid=2139133a-0e3d-4a8b-106d-99764a16a18d&redirect=1"
+uploader = "thigdon"
+producer_version = "Creo 18.1 (uploader's recollection)"
+license_status = "Public forum attachment; no redistribution license found"
+repository_policy = "download-only; samples/external is gitignored"
+outer_archive = "1_09_04_010_MANDREL.zip"
+outer_archive_sha256 = "e1e5ee6c0c63dab1bba8dcf7780645398da70c59a230a41ac20c363e3a6431ec"
+bundle_member = "09_04_010_MANDREL.bdl"
+bundle_sha256 = "63b2952002451d0693b9db56e466dce1f09810528d92c7e28722afcf422a7b0d"
+compressed_member = "am_2d_0.mi"
+compressed_sha256 = "60303e5f6dd38f434fd20b20798b3a9d3d9dfcb0e9883015119db6b3d1b49ecc"
+compressed_bytes = 87506
+compression_signature = "gzip 1f 8b 08"
+logical_sha256 = "3bb45897b8cdbb9bc0e82048af65677274548002234c4a0190b4f0f14a1d1d65"
+logical_bytes = 393805
+logical_mi_version = "3.40"
+logical_encoding = "UTF-8"
+line_endings = "CRLF"
+pair_definition = "The logical member is the exact gzip expansion of the product-generated compressed member; this is not a separately exported standalone .bi/.mi pair."
+
+[corpus.phase4_validation]
+container_size = 87506
+logical_size = 393805
+line_count = 55160
+section_count = 144
+record_count = 4527
+semantic_version = "3.40"
+part_count = 25
+addressable_entity_count = 4499
+graphic_entity_count = 128
+text_entity_count = 35
+raw_diagnostics = 0
+equivalence = "logical bytes, global info, parts, addressable entities, and semantic diagnostics match between compressed and expanded inputs"
+
+[corpus.phase5_validation]
+graphic_entity_count = 216
+bspline_count = 88
+annotation_count = 88
+dimension_count = 46
+dimension_tolerance_count = 10
+leader_count = 7
+hatch_count = 9
+symbol_count = 16
+assembly_count = 25
+assembly_instance_count = 24
+root_part_count = 1
+sheet_part_count = 1
+equivalence = "compressed and expanded inputs retain identical Phase 5 geometry, annotations, hierarchy, and diagnostics"

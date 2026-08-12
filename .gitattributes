@@ -1,0 +1,4 @@
+# MI sources and compressed BI containers are byte-preserving parser fixtures.
+# Do not let core.autocrlf or checkout platform rewrite their contents.
+*.[mM][iI] -text
+*.[bB][iI] -text

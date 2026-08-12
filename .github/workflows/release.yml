@@ -1,0 +1,414 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_NAME: ezmi
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  preflight:
+    name: Test and validate release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Validate package, tag, and PyPI versions
+        id: version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          release_args=(--github-output "${GITHUB_OUTPUT}")
+          if [[ -n "${RELEASE_TAG}" ]]; then
+            release_args+=(--tag "${RELEASE_TAG}" --check-pypi)
+          fi
+          python scripts/check_release_version.py "${release_args[@]}"
+
+      - name: Create locked development environment
+        run: |
+          uv lock --check
+          uv sync --locked --extra dev
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Test Rust workspace
+        run: cargo test --workspace --locked
+
+      - name: Install native extension
+        run: uv run maturin develop --release --locked
+
+      - name: Check Python formatting and lint
+        shell: bash
+        run: |
+          uv run ruff format --check src tests benchmarks scripts/*.py
+          uv run ruff check src tests benchmarks scripts/*.py
+
+      - name: Test Python package
+        run: uv run pytest -q
+
+      - name: Smoke benchmark pipeline
+        shell: bash
+        run: |
+          uv run python benchmarks/benchmark_pipeline.py tests/data \
+            --warmup 0 --repeat 1 \
+            --json-output "${RUNNER_TEMP}/ezmi-benchmark.json" \
+            --markdown-output "${RUNNER_TEMP}/ezmi-benchmark.md"
+
+  fuzz:
+    name: Bounded parser fuzz smoke
+    needs: preflight
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up nightly Rust
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+
+      - name: Seed and run raw scanner target
+        shell: bash
+        run: |
+          raw_corpus="${RUNNER_TEMP}/raw-scan-corpus"
+          mkdir -p "${raw_corpus}"
+          cp tests/data/*.mi "${raw_corpus}/"
+          cargo +nightly fuzz run raw_scan "${raw_corpus}" -- \
+            -runs=1000 -max_len=1048576
+
+      - name: Seed and run semantic reader target
+        shell: bash
+        run: |
+          semantic_corpus="${RUNNER_TEMP}/semantic-read-corpus"
+          mkdir -p "${semantic_corpus}"
+          cp tests/data/*.mi "${semantic_corpus}/"
+          cargo +nightly fuzz run semantic_read "${semantic_corpus}" -- \
+            -runs=1000 -max_len=1048576
+
+  build-wheels:
+    name: Build wheel (${{ matrix.name }})
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2014"
+          - name: linux-aarch64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            manylinux: "2014"
+          - name: macos-universal2
+            os: macos-latest
+            target: universal2-apple-darwin
+            manylinux: auto
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            manylinux: auto
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          target: ${{ matrix.target }}
+          args: --release --locked --out dist
+          manylinux: ${{ matrix.manylinux }}
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheel-${{ matrix.name }}
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 7
+
+  build-sdist:
+    name: Build source distribution
+    needs: preflight
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build source distribution
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+
+      - name: Upload source distribution
+        uses: actions/upload-artifact@v6
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble:
+    name: Assemble and inspect release artifacts
+    needs:
+      - preflight
+      - build-wheels
+      - build-sdist
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout verification tooling
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Download wheels
+        uses: actions/download-artifact@v7
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+
+      - name: Download source distribution
+        uses: actions/download-artifact@v7
+        with:
+          name: sdist
+          path: dist
+
+      - name: Verify complete artifact set
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: >-
+          python scripts/verify_release_artifacts.py
+          --dist dist --version "${VERSION}"
+          --expected-platform linux-x86_64
+          --expected-platform linux-aarch64
+          --expected-platform macos-universal2
+          --expected-platform windows-x86_64
+          --require-sdist --require-manylinux2014
+
+      - name: Generate checksums
+        shell: bash
+        run: sha256sum dist/* > SHA256SUMS
+
+      - name: Upload complete distribution set
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-dists
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-checksums
+          path: SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload installed-package smoke tool
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-verification
+          path: scripts/smoke_installed_package.py
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-wheel:
+    name: Verify ${{ matrix.name }} artifact
+    needs:
+      - preflight
+      - assemble
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64 / Python 3.10
+            os: ubuntu-latest
+            python-version: "3.10"
+          - name: linux-x86_64 / Python 3.14
+            os: ubuntu-latest
+            python-version: "3.14"
+          - name: linux-aarch64 / Python 3.10
+            os: ubuntu-24.04-arm
+            python-version: "3.10"
+          - name: macos-universal2 / Python 3.10
+            os: macos-latest
+            python-version: "3.10"
+          - name: windows-x86_64 / Python 3.10
+            os: windows-latest
+            python-version: "3.10"
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download release distributions
+        uses: actions/download-artifact@v7
+        with:
+          name: release-dists
+          path: dist
+
+      - name: Download verification tool
+        uses: actions/download-artifact@v7
+        with:
+          name: release-verification
+          path: verification
+
+      - name: Install matching wheel without source checkout
+        run: >-
+          python -m pip install --no-index --no-deps --find-links dist
+          "ezmi==${{ needs.preflight.outputs.version }}"
+
+      - name: Verify installed API, parser, package data, and CLI
+        run: >-
+          python verification/smoke_installed_package.py
+          --version "${{ needs.preflight.outputs.version }}"
+
+  verify-sdist:
+    name: Build and verify installed sdist
+    needs:
+      - preflight
+      - assemble
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Download release distributions
+        uses: actions/download-artifact@v7
+        with:
+          name: release-dists
+          path: dist
+
+      - name: Download verification tool
+        uses: actions/download-artifact@v7
+        with:
+          name: release-verification
+          path: verification
+
+      - name: Build and install exact sdist without source checkout
+        shell: bash
+        run: python -m pip install --no-deps dist/ezmi-*.tar.gz
+
+      - name: Verify installed API, parser, package data, and CLI
+        run: >-
+          python verification/smoke_installed_package.py
+          --version "${{ needs.preflight.outputs.version }}"
+
+  pypi-publish:
+    name: Publish to PyPI
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs:
+      - preflight
+      - fuzz
+      - assemble
+      - verify-wheel
+      - verify-sdist
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/ezmi
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download release distributions
+        uses: actions/download-artifact@v7
+        with:
+          name: release-dists
+          path: dist
+
+      - name: Publish release distributions
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+
+  github-release:
+    name: Create GitHub release
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs:
+      - preflight
+      - pypi-publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release distributions
+        uses: actions/download-artifact@v7
+        with:
+          name: release-dists
+          path: dist
+
+      - name: Download checksums
+        uses: actions/download-artifact@v7
+        with:
+          name: release-checksums
+
+      - name: Create GitHub release after PyPI succeeds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}" dist/* SHA256SUMS
+          --repo "${GITHUB_REPOSITORY}" --verify-tag --generate-notes

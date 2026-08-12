@@ -1,0 +1,81 @@
+[project]
+name = "ezmi"
+version = "0.1.0"
+description = "Lossless reader for PTC Creo Elements/Direct Drafting MI files powered by Rust"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "neka-nat", email = "nekanat.stock@gmail.com" },
+]
+requires-python = ">=3.10"
+dependencies = []
+keywords = ["mi", "cad", "me10", "creo", "parser", "rust"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Homepage = "https://github.com/monozukuri-ai/ezmi"
+Repository = "https://github.com/monozukuri-ai/ezmi"
+Issues = "https://github.com/monozukuri-ai/ezmi/issues"
+Documentation = "https://github.com/monozukuri-ai/ezmi/blob/main/docs/api.md"
+
+[project.optional-dependencies]
+dev = [
+    "maturin>=1.13,<2.0",
+    "pytest>=8.0",
+    "ruff>=0.12",
+]
+corpus = [
+    "ezdxf>=1.4,<2.0",
+]
+
+[project.scripts]
+ezmi = "ezmi:main"
+
+[tool.maturin]
+manifest-path = "crates/ezmi-python/Cargo.toml"
+module-name = "ezmi._core"
+python-packages = ["ezmi"]
+python-source = "src"
+include = [
+    { path = "benchmarks/README.md", format = "sdist" },
+    { path = "benchmarks/benchmark_pipeline.py", format = "sdist" },
+    { path = "benchmarks/results/*.json", format = "sdist" },
+    { path = "benchmarks/results/*.md", format = "sdist" },
+    { path = "docs/*.md", format = "sdist" },
+    { path = "fuzz/Cargo.lock", format = "sdist" },
+    { path = "fuzz/Cargo.toml", format = "sdist" },
+    { path = "fuzz/fuzz_targets/*.rs", format = "sdist" },
+    { path = "samples/README.md", format = "sdist" },
+    { path = "samples/manifest.toml", format = "sdist" },
+    { path = "scripts/fetch_external_samples.sh", format = "sdist" },
+    { path = "scripts/*.py", format = "sdist" },
+    { path = "tests/data/*.mi", format = "sdist" },
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF"]
+
+[build-system]
+requires = ["maturin>=1.13,<2.0"]
+build-backend = "maturin"

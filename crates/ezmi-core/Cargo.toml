@@ -1,0 +1,17 @@
+[package]
+name = "ezmi-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[lib]
+name = "ezmi_core"
+
+[dependencies]
+encoding_rs = "0.8.35"
+flate2 = "1.1"
+thiserror = "2.0"

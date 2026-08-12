@@ -1,0 +1,179 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.10"
+          - os: ubuntu-latest
+            python-version: "3.14"
+          - os: macos-latest
+            python-version: "3.10"
+          - os: windows-latest
+            python-version: "3.10"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Create locked development environment
+        run: |
+          uv lock --check
+          uv sync --locked --extra dev
+
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Rust lint
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Rust tests
+        run: cargo test --workspace --locked
+
+      - name: Python formatting
+        run: uv run ruff format --check src tests benchmarks scripts
+
+      - name: Python lint
+        run: uv run ruff check src tests benchmarks scripts
+
+      - name: Python tests
+        run: uv run pytest -q
+
+      - name: CLI smoke test
+        run: uv run python -m ezmi inspect tests/data/minimal.mi --json --records
+
+      - name: Full-pipeline benchmark smoke test
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
+        shell: bash
+        run: |
+          uv run python benchmarks/benchmark_pipeline.py tests/data \
+            --warmup 0 --repeat 1 \
+            --json-output "${RUNNER_TEMP}/ezmi-benchmark.json" \
+            --markdown-output "${RUNNER_TEMP}/ezmi-benchmark.md"
+
+      - name: Build wheel
+        run: uv run maturin build --release --locked --out dist
+
+      - name: Verify installed wheel and typing files
+        shell: bash
+        run: |
+          python -m venv .wheel-venv
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            VERIFY_PY=.wheel-venv/Scripts/python.exe
+          else
+            VERIFY_PY=.wheel-venv/bin/python
+          fi
+          "${VERIFY_PY}" -m pip install --no-index --find-links dist ezmi
+          "${VERIFY_PY}" scripts/smoke_installed_package.py
+
+  distribution:
+    name: Wheel and sdist contents
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Build wheel and sdist
+        run: |
+          uv lock --check
+          uv sync --locked --extra dev
+          uv run maturin build --release --locked --out dist
+          uv run maturin sdist --out dist
+
+      - name: Inspect distribution contents
+        shell: bash
+        run: |
+          version=$(python scripts/check_release_version.py)
+          python scripts/verify_release_artifacts.py \
+            --dist dist --version "${version}" \
+            --expected-platform linux-x86_64 --require-sdist
+
+      - name: Install and smoke-test exact sdist
+        shell: bash
+        run: |
+          python -m venv .sdist-venv
+          .sdist-venv/bin/python -m pip install --no-deps dist/ezmi-*.tar.gz
+          .sdist-venv/bin/python scripts/smoke_installed_package.py
+
+  fuzz:
+    name: Parser fuzz smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up nightly Rust
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+
+      - name: Run seeded fuzz targets
+        shell: bash
+        run: |
+          raw_corpus="${RUNNER_TEMP}/raw-scan-corpus"
+          semantic_corpus="${RUNNER_TEMP}/semantic-read-corpus"
+          mkdir -p "${raw_corpus}" "${semantic_corpus}"
+          cp tests/data/*.mi "${raw_corpus}/"
+          cp tests/data/*.mi "${semantic_corpus}/"
+          cargo +nightly fuzz run raw_scan "${raw_corpus}" -- \
+            -runs=1000 -max_len=1048576
+          cargo +nightly fuzz run semantic_read "${semantic_corpus}" -- \
+            -runs=1000 -max_len=1048576
+
+  msrv:
+    name: Rust 1.83 MSRV
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Rust 1.83
+        uses: dtolnay/rust-toolchain@1.83.0
+
+      - name: Check locked workspace
+        run: cargo check --workspace --locked

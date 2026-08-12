@@ -1,0 +1,19 @@
+[package]
+name = "ezmi-python"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+ezmi-core = { path = "../ezmi-core" }
+pyo3.workspace = true
+

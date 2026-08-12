@@ -1,0 +1,29 @@
+[package]
+name = "ezmi-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+ezmi-core = { path = "../crates/ezmi-core" }
+libfuzzer-sys = "0.4"
+
+[[bin]]
+name = "raw_scan"
+path = "fuzz_targets/raw_scan.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "semantic_read"
+path = "fuzz_targets/semantic_read.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]
