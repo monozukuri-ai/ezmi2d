@@ -134,11 +134,6 @@ public Creo bundle: 87,506 compressed bytes expand to 393,805 logical bytes.
 Its 88 B-splines, 88 typed annotations, 25-part hierarchy, and sheet association
 produce identical semantic models and diagnostics from compressed and expanded input.
 
-The [Phase 6 full-pipeline benchmark](benchmarks/results/phase6-baseline.md) covers all 21 external
-MI inputs. Its paired [JSON data](benchmarks/results/phase6-baseline.json) records every timing
-sample and input SHA-256; treat it as a same-machine regression baseline, not a performance
-guarantee.
-
 ## Distribution
 
 Release automation builds `cp310-abi3` wheels for Linux x86-64 and ARM64, macOS universal2, and
