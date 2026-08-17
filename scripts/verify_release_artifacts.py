@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify ezmi wheel/sdist names, metadata, contents, and platform coverage."""
+"""Verify ezmi2d wheel/sdist names, metadata, contents, and platform coverage."""
 
 from __future__ import annotations
 
@@ -16,14 +16,15 @@ PLATFORMS = {
     "windows-x86_64",
 }
 WHEEL_PACKAGE_FILES = {
-    "ezmi/__init__.py",
-    "ezmi/__main__.py",
-    "ezmi/_core.pyi",
-    "ezmi/diagnostics.py",
-    "ezmi/document.py",
-    "ezmi/entities.py",
-    "ezmi/raw.py",
-    "ezmi/py.typed",
+    "ezmi2d/__init__.py",
+    "ezmi2d/__main__.py",
+    "ezmi2d/_core.pyi",
+    "ezmi2d/diagnostics.py",
+    "ezmi2d/document.py",
+    "ezmi2d/entities.py",
+    "ezmi2d/plotting.py",
+    "ezmi2d/raw.py",
+    "ezmi2d/py.typed",
 }
 SDIST_FILES = {
     "Cargo.lock",
@@ -38,6 +39,7 @@ SDIST_FILES = {
     "docs/api.md",
     "docs/mi-format-research.md",
     "docs/releasing.md",
+    "examples/plot_mi.py",
     "fuzz/Cargo.lock",
     "fuzz/Cargo.toml",
     "fuzz/fuzz_targets/raw_scan.rs",
@@ -69,7 +71,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _platform(filename: str, version: str) -> str:
-    prefix = f"ezmi-{version}-cp310-abi3-"
+    prefix = f"ezmi2d-{version}-cp310-abi3-"
     if not filename.startswith(prefix) or not filename.endswith(".whl"):
         raise ValueError(f"wheel does not use the required cp310-abi3 tag: {filename}")
     tag = filename[len(prefix) : -4]
@@ -105,13 +107,13 @@ def _verify_wheel(path: Path, version: str, *, require_manylinux2014: bool) -> s
             raise ValueError(f"{path.name}: missing package files: {sorted(missing)}")
         extension_suffix = ".pyd" if platform_name == "windows-x86_64" else ".so"
         if not any(
-            name.startswith("ezmi/_core") and name.endswith(extension_suffix) for name in names
+            name.startswith("ezmi2d/_core") and name.endswith(extension_suffix) for name in names
         ):
             raise ValueError(f"{path.name}: native extension {extension_suffix} is missing")
         if any("samples/external/" in name for name in names):
             raise ValueError(f"{path.name}: external corpus data must not be distributed")
         metadata = _metadata(archive, path.name)
-        if metadata["Name"] != "ezmi":
+        if metadata["Name"] != "ezmi2d":
             raise ValueError(f"{path.name}: unexpected Name metadata {metadata['Name']!r}")
         if metadata["Version"] != version:
             raise ValueError(f"{path.name}: unexpected Version metadata {metadata['Version']!r}")
@@ -123,7 +125,7 @@ def _verify_wheel(path: Path, version: str, *, require_manylinux2014: bool) -> s
 
 
 def _verify_sdist(path: Path, version: str) -> None:
-    expected_prefix = f"ezmi-{version}/"
+    expected_prefix = f"ezmi2d-{version}/"
     with tarfile.open(path, "r:gz") as archive:
         names = set(archive.getnames())
     if any("/samples/external/" in name for name in names):
@@ -163,7 +165,7 @@ def main() -> int:
     if args.require_sdist:
         if len(sdists) != 1:
             raise RuntimeError(f"expected one sdist, found {len(sdists)}")
-        expected_name = f"ezmi-{args.version}.tar.gz"
+        expected_name = f"ezmi2d-{args.version}.tar.gz"
         if sdists[0].name != expected_name:
             raise RuntimeError(f"unexpected sdist name: {sdists[0].name}")
         _verify_sdist(sdists[0], args.version)
@@ -171,7 +173,7 @@ def main() -> int:
         raise RuntimeError("sdist present without --require-sdist")
 
     print(
-        f"verified ezmi {args.version}: {len(wheels)} wheel(s) for "
+        f"verified ezmi2d {args.version}: {len(wheels)} wheel(s) for "
         f"{', '.join(sorted(actual))}" + (" and one sdist" if args.require_sdist else "")
     )
     return 0

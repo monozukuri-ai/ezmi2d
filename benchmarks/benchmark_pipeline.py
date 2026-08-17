@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark distinct ezmi reader stages and emit JSON plus Markdown reports."""
+"""Benchmark distinct ezmi2d reader stages and emit JSON plus Markdown reports."""
 
 from __future__ import annotations
 
@@ -16,21 +16,21 @@ from pathlib import Path
 from time import perf_counter_ns
 from typing import Any
 
-import ezmi
+import ezmi2d
 
 SCHEMA_VERSION = 1
 STAGE_DESCRIPTIONS = {
     "read_container": "Path.read_bytes(); container I/O only",
-    "detect_format_bytes": "ezmi.detect_format(bytes); signature/probe only",
-    "scan_bytes": "ezmi.scan(bytes); decompression, raw scan, and Python raw model",
-    "read_bytes": "ezmi.read(bytes); decompression, raw and semantic parse, Python model",
-    "read_path_end_to_end": "ezmi.read(path); I/O through complete semantic Python model",
+    "detect_format_bytes": "ezmi2d.detect_format(bytes); signature/probe only",
+    "scan_bytes": "ezmi2d.scan(bytes); decompression, raw scan, and Python raw model",
+    "read_bytes": "ezmi2d.read(bytes); decompression, raw and semantic parse, Python model",
+    "read_path_end_to_end": "ezmi2d.read(path); I/O through complete semantic Python model",
 }
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Benchmark the complete ezmi input-to-Document pipeline"
+        description="Benchmark the complete ezmi2d input-to-Document pipeline"
     )
     parser.add_argument(
         "inputs",
@@ -103,16 +103,16 @@ def _display_path(path: Path, base: Path) -> str:
 
 def _benchmark_file(path: Path, *, warmup: int, repeat: int, base: Path) -> dict[str, Any]:
     container = path.read_bytes()
-    format_info = ezmi.detect_format(container)
-    raw = ezmi.scan(container)
-    document = ezmi.read(container)
+    format_info = ezmi2d.detect_format(container)
+    raw = ezmi2d.scan(container)
+    document = ezmi2d.read(container)
 
     operations: dict[str, Callable[[], object]] = {
         "read_container": path.read_bytes,
-        "detect_format_bytes": lambda: ezmi.detect_format(container),
-        "scan_bytes": lambda: ezmi.scan(container),
-        "read_bytes": lambda: ezmi.read(container),
-        "read_path_end_to_end": lambda: ezmi.read(path),
+        "detect_format_bytes": lambda: ezmi2d.detect_format(container),
+        "scan_bytes": lambda: ezmi2d.scan(container),
+        "read_bytes": lambda: ezmi2d.read(container),
+        "read_path_end_to_end": lambda: ezmi2d.read(path),
     }
     stages = {
         name: _statistics(_measure(operation, warmup=warmup, repeat=repeat))
@@ -171,7 +171,7 @@ def _environment() -> dict[str, str]:
     return {
         "python": platform.python_version(),
         "python_implementation": platform.python_implementation(),
-        "ezmi": ezmi.__version__,
+        "ezmi2d": ezmi2d.__version__,
         "platform": platform.platform(),
         "machine": platform.machine(),
         "processor": platform.processor(),
@@ -186,7 +186,7 @@ def _markdown(report: dict[str, Any]) -> str:
     aggregate = report["aggregate"]
     environment = report["environment"]
     lines = [
-        "# ezmi full-pipeline benchmark",
+        "# ezmi2d full-pipeline benchmark",
         "",
         f"Generated: `{report['generated_at']}`",
         "",
@@ -197,7 +197,7 @@ def _markdown(report: dict[str, Any]) -> str:
         "",
         "## Conditions",
         "",
-        f"- ezmi `{environment['ezmi']}` on Python `{environment['python']}` "
+        f"- ezmi2d `{environment['ezmi2d']}` on Python `{environment['python']}` "
         f"({environment['python_implementation']})",
         f"- Platform: `{environment['platform']}` / `{environment['machine']}`",
         f"- Warmup runs: {report['warmup']}; timed runs: {report['repeat']} per file and stage",

@@ -1,4 +1,4 @@
-# ezmi full-pipeline benchmark
+# ezmi2d full-pipeline benchmark
 
 Generated: `2026-08-12T14:53:32.318817+00:00`
 
@@ -6,7 +6,7 @@ This snapshot reports independent, non-additive measurements. `read_path_end_to_
 
 ## Conditions
 
-- ezmi `0.1.0` on Python `3.13.1` (CPython)
+- ezmi2d `0.1.0` on Python `3.13.1` (CPython)
 - Platform: `Linux-6.8.0-136-generic-x86_64-with-glibc2.39` / `x86_64`
 - Warmup runs: 1; timed runs: 5 per file and stage
 - Corpus: 21 files, 1153163 container bytes, 1459462 logical bytes, 26035 records, 25922 addressable entities
@@ -17,10 +17,10 @@ This snapshot reports independent, non-additive measurements. `read_path_end_to_
 | Stage | Scope | Sum of file medians (ms) | Throughput (MiB/s) |
 |---|---|---:|---:|
 | `read_container` | Path.read_bytes(); container I/O only | 0.189 | 5808.08 (container) |
-| `detect_format_bytes` | ezmi.detect_format(bytes); signature/probe only | 0.118 | 6507.64 (probe) |
-| `scan_bytes` | ezmi.scan(bytes); decompression, raw scan, and Python raw model | 1776.002 | 0.78 (logical) |
-| `read_bytes` | ezmi.read(bytes); decompression, raw and semantic parse, Python model | 1976.608 | 0.70 (logical) |
-| `read_path_end_to_end` | ezmi.read(path); I/O through complete semantic Python model | 1988.617 | 0.70 (logical) |
+| `detect_format_bytes` | ezmi2d.detect_format(bytes); signature/probe only | 0.118 | 6507.64 (probe) |
+| `scan_bytes` | ezmi2d.scan(bytes); decompression, raw scan, and Python raw model | 1776.002 | 0.78 (logical) |
+| `read_bytes` | ezmi2d.read(bytes); decompression, raw and semantic parse, Python model | 1976.608 | 0.70 (logical) |
+| `read_path_end_to_end` | ezmi2d.read(path); I/O through complete semantic Python model | 1988.617 | 0.70 (logical) |
 
 ## Per-file full pipeline
 

@@ -1,5 +1,5 @@
 [package]
-name = "ezmi-python"
+name = "ezmi2d-python"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,6 +14,6 @@ name = "_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-ezmi-core = { path = "../ezmi-core" }
+ezmi2d-core = { path = "../ezmi2d-core" }
 pyo3.workspace = true
 

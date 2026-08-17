@@ -51,7 +51,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ezmi-core"
+name = "ezmi2d-core"
 version = "0.1.0"
 dependencies = [
  "encoding_rs",
@@ -60,10 +60,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "ezmi-fuzz"
+name = "ezmi2d-fuzz"
 version = "0.0.0"
 dependencies = [
- "ezmi-core",
+ "ezmi2d-core",
  "libfuzzer-sys",
 ]
 

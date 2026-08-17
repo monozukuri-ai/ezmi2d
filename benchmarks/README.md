@@ -11,8 +11,8 @@ Run a repository-fixture smoke benchmark:
 ```console
 uv run python benchmarks/benchmark_pipeline.py tests/data \
   --warmup 1 --repeat 5 \
-  --json-output /tmp/ezmi-benchmark.json \
-  --markdown-output /tmp/ezmi-benchmark.md
+  --json-output /tmp/ezmi2d-benchmark.json \
+  --markdown-output /tmp/ezmi2d-benchmark.md
 ```
 
 Reproduce the Phase 6 corpus snapshot after fetching the opt-in external samples:

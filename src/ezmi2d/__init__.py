@@ -37,6 +37,7 @@ from .entities import (
     UnsupportedEntity,
     Vec2,
 )
+from .plotting import DEFAULT_COLORS, draw
 from .raw import (
     DEFAULT_MAX_COMPRESSION_RATIO,
     DEFAULT_MAX_DECOMPRESSED_SIZE_BYTES,
@@ -68,13 +69,13 @@ from .raw import (
 )
 
 try:
-    __version__ = version("ezmi")
+    __version__ = version("ezmi2d")
 except PackageNotFoundError:  # pragma: no cover - source tree without install
     __version__ = _core.core_version()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the ezmi command-line interface."""
+    """Run the ezmi2d command-line interface."""
 
     from .__main__ import main as cli_main
 
@@ -82,6 +83,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = [
+    "DEFAULT_COLORS",
     "DEFAULT_MAX_COMPRESSION_RATIO",
     "DEFAULT_MAX_DECOMPRESSED_SIZE_BYTES",
     "DEFAULT_MAX_FILE_SIZE_BYTES",
@@ -146,6 +148,7 @@ __all__ = [
     "Vec2",
     "__version__",
     "detect_format",
+    "draw",
     "main",
     "read",
     "readfile",

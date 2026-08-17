@@ -4,23 +4,23 @@ from pathlib import Path
 
 import pytest
 
-import ezmi
+import ezmi2d
 
 FIXTURE = Path(__file__).parents[1] / "data" / "phase5.mi"
 
 
 def test_phase5_geometry_and_annotations_are_typed_without_losing_values() -> None:
-    document = ezmi.read(FIXTURE)
+    document = ezmi2d.read(FIXTURE)
 
     fillet = document.get(20)
-    assert isinstance(fillet, ezmi.Fillet)
-    assert fillet.center == ezmi.Vec2(0.0, 0.0)
-    assert fillet.start == ezmi.Vec2(1.0, 0.0)
-    assert fillet.end == ezmi.Vec2(0.0, 1.0)
+    assert isinstance(fillet, ezmi2d.Fillet)
+    assert fillet.center == ezmi2d.Vec2(0.0, 0.0)
+    assert fillet.start == ezmi2d.Vec2(1.0, 0.0)
+    assert fillet.end == ezmi2d.Vec2(0.0, 1.0)
     assert fillet.radius == pytest.approx(1.0)
 
     spline = document.get(21)
-    assert isinstance(spline, ezmi.BSpline)
+    assert isinstance(spline, ezmi2d.BSpline)
     assert spline.display_values == (3, 0, 1, 1)
     assert spline.property is document.get(1)
     assert spline.prefix_values == (b"3", b"0", b"1", b"1", b"1")
@@ -29,19 +29,19 @@ def test_phase5_geometry_and_annotations_are_typed_without_losing_values() -> No
     assert spline.parameter_domain == (0.0, 1.0)
     assert spline.control_point_ids == (13, 14, 15, 16)
     assert all(point is not None for point in spline.control_points)
-    assert spline.evaluate(0.0) == ezmi.Vec2(0.0, 0.0)
-    assert spline.evaluate(0.5) == ezmi.Vec2(0.5, 0.75)
-    assert spline.evaluate(1.0) == ezmi.Vec2(1.0, 0.0)
+    assert spline.evaluate(0.0) == ezmi2d.Vec2(0.0, 0.0)
+    assert spline.evaluate(0.5) == ezmi2d.Vec2(0.5, 0.75)
+    assert spline.evaluate(1.0) == ezmi2d.Vec2(1.0, 0.0)
     assert tuple(sample.point_id for sample in spline.samples) == (13, 16)
     with pytest.raises(ValueError, match="outside"):
         spline.evaluate(2.0)
 
     assert tuple(type(entity) for entity in document.annotations) == (
-        ezmi.DimensionTolerance,
-        ezmi.Leader,
-        ezmi.Hatch,
-        ezmi.Dimension,
-        ezmi.Symbol,
+        ezmi2d.DimensionTolerance,
+        ezmi2d.Leader,
+        ezmi2d.Hatch,
+        ezmi2d.Dimension,
+        ezmi2d.Symbol,
     )
     assert document.dimension_tolerances[0].values == (
         b"7",
@@ -67,7 +67,7 @@ def test_phase5_geometry_and_annotations_are_typed_without_losing_values() -> No
 
 
 def test_nested_shared_parts_and_multiple_sheets_are_resolved() -> None:
-    document = ezmi.read(FIXTURE)
+    document = ezmi2d.read(FIXTURE)
 
     leaf, sheet_a, sheet_b, drawing = document.parts
     assert document.top_part is drawing
@@ -116,7 +116,7 @@ def test_malformed_phase5_record_is_retained_as_raw_unsupported(
     mi_type: str, entity_id: int
 ) -> None:
     data = FIXTURE.read_bytes()
-    scan = ezmi.scan(data)
+    scan = ezmi2d.scan(data)
     record = next(
         record
         for record in scan.records_of_type(mi_type)
@@ -125,9 +125,9 @@ def test_malformed_phase5_record_is_retained_as_raw_unsupported(
     replacement = f"{mi_type}\n{entity_id}\n|~\n".encode()
     malformed = data[: record.span.offset] + replacement + data[record.span.end_offset :]
 
-    document = ezmi.read(malformed)
+    document = ezmi2d.read(malformed)
     entity = document.get(entity_id)
-    assert isinstance(entity, ezmi.UnsupportedEntity)
+    assert isinstance(entity, ezmi2d.UnsupportedEntity)
     assert entity.mi_type == mi_type
     assert entity.raw_record.payload == f"{mi_type}\n{entity_id}\n".encode()
     assert "MI_INVALID_ENTITY_RECORD" in {diagnostic.code for diagnostic in document.diagnostics}

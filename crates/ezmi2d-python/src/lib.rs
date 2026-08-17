@@ -1,6 +1,6 @@
-//! PyO3 bindings for `ezmi-core`.
+//! PyO3 bindings for `ezmi2d-core`.
 
-use ezmi_core::{
+use ezmi2d_core::{
     detect_format, read_input_with_encoding, scan_input, ArcEntity, AssemblyInstance,
     BSplineEntity, Bounds2, CircleEntity, Diagnostic, EncodingInfo, GlobalInfo, GraphicHeader,
     LineEntity, MiError as CoreMiError, MiFormatInfo, Part, Point2, RawDocument, RawLine,
@@ -16,7 +16,7 @@ create_exception!(
     _core,
     MiError,
     PyException,
-    "Base exception raised by ezmi."
+    "Base exception raised by ezmi2d."
 );
 create_exception!(
     _core,
@@ -39,7 +39,7 @@ create_exception!(
 
 #[pyfunction]
 fn core_version() -> String {
-    ezmi_core::version().to_owned()
+    ezmi2d_core::version().to_owned()
 }
 
 #[pyfunction]
@@ -599,26 +599,26 @@ fn _core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     let py = module.py();
     module.add(
         "DEFAULT_MAX_FILE_SIZE_BYTES",
-        ezmi_core::DEFAULT_MAX_FILE_SIZE_BYTES,
+        ezmi2d_core::DEFAULT_MAX_FILE_SIZE_BYTES,
     )?;
-    module.add("DEFAULT_MAX_LINES", ezmi_core::DEFAULT_MAX_LINES)?;
-    module.add("DEFAULT_MAX_SECTIONS", ezmi_core::DEFAULT_MAX_SECTIONS)?;
-    module.add("DEFAULT_MAX_RECORDS", ezmi_core::DEFAULT_MAX_RECORDS)?;
+    module.add("DEFAULT_MAX_LINES", ezmi2d_core::DEFAULT_MAX_LINES)?;
+    module.add("DEFAULT_MAX_SECTIONS", ezmi2d_core::DEFAULT_MAX_SECTIONS)?;
+    module.add("DEFAULT_MAX_RECORDS", ezmi2d_core::DEFAULT_MAX_RECORDS)?;
     module.add(
         "DEFAULT_MAX_LINE_SIZE_BYTES",
-        ezmi_core::DEFAULT_MAX_LINE_SIZE_BYTES,
+        ezmi2d_core::DEFAULT_MAX_LINE_SIZE_BYTES,
     )?;
     module.add(
         "DEFAULT_MAX_RECORD_SIZE_BYTES",
-        ezmi_core::DEFAULT_MAX_RECORD_SIZE_BYTES,
+        ezmi2d_core::DEFAULT_MAX_RECORD_SIZE_BYTES,
     )?;
     module.add(
         "DEFAULT_MAX_DECOMPRESSED_SIZE_BYTES",
-        ezmi_core::DEFAULT_MAX_DECOMPRESSED_SIZE_BYTES,
+        ezmi2d_core::DEFAULT_MAX_DECOMPRESSED_SIZE_BYTES,
     )?;
     module.add(
         "DEFAULT_MAX_COMPRESSION_RATIO",
-        ezmi_core::DEFAULT_MAX_COMPRESSION_RATIO,
+        ezmi2d_core::DEFAULT_MAX_COMPRESSION_RATIO,
     )?;
     module.add("MiError", py.get_type::<MiError>())?;
     module.add("InvalidMiError", py.get_type::<InvalidMiError>())?;

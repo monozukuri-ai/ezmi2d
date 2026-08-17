@@ -15,7 +15,7 @@ readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 readonly DESTINATION="${REPO_ROOT}/samples/external/takahiro-soarerdex"
 readonly PTC_DESTINATION="${REPO_ROOT}/samples/external/ptc-community-mandrel"
-readonly TEMP_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/ezmi-samples.XXXXXX")"
+readonly TEMP_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/ezmi2d-samples.XXXXXX")"
 
 cleanup() {
   rm -rf -- "${TEMP_DIRECTORY}"

@@ -1,6 +1,6 @@
 #![no_main]
 
-use ezmi_core::{detect_format, scan, ScanOptions};
+use ezmi2d_core::{detect_format, scan, ScanOptions};
 use libfuzzer_sys::fuzz_target;
 
 const FUZZ_OPTIONS: ScanOptions = ScanOptions {

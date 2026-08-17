@@ -1,15 +1,15 @@
 # Python API reference
 
-`ezmi` exposes a bounded, lossless raw scanner and a higher-level semantic reader. Both APIs accept
+`ezmi2d` exposes a bounded, lossless raw scanner and a higher-level semantic reader. Both APIs accept
 filesystem paths and `bytes`, `bytearray`, or `memoryview` values. Python 3.10 through 3.14 is
 supported by the `cp310-abi3` wheels.
 
 ## Reading a drawing
 
 ```python
-import ezmi
+import ezmi2d
 
-drawing = ezmi.read("drawing.mi")
+drawing = ezmi2d.read("drawing.mi")
 print(drawing.version, drawing.units, drawing.extents)
 
 for entity in drawing.modelspace().query("LINE ARC FILLET BSPLINE CIRCLE TEXT"):
@@ -19,11 +19,11 @@ for entity in drawing.modelspace().query("LINE ARC FILLET BSPLINE CIRCLE TEXT"):
 The top-level entry points are:
 
 ```python
-ezmi.detect_format(source) -> MiFormatInfo
-ezmi.scan(source, *, limits=None) -> RawScan
-ezmi.scan_records(source, *, limits=None) -> RawScan
-ezmi.read(source, *, limits=None, encoding=None) -> Document
-ezmi.readfile(path, *, limits=None, encoding=None) -> Document
+ezmi2d.detect_format(source) -> MiFormatInfo
+ezmi2d.scan(source, *, limits=None) -> RawScan
+ezmi2d.scan_records(source, *, limits=None) -> RawScan
+ezmi2d.read(source, *, limits=None, encoding=None) -> Document
+ezmi2d.readfile(path, *, limits=None, encoding=None) -> Document
 ```
 
 `scan_records` is an alias of `scan`; `readfile` is the path-oriented alias of `read`. File names and
@@ -57,6 +57,36 @@ are `LINE`/`LIN`, `ARC`, `FILLET`/`FIL`, `BSPLINE`/`SPLINE`/`BSPL`, `CIRCLE`/`CI
 `TEXT`/`TEX`; `"*"` selects all graphic entities. `query_annotations()` accepts exact MI names plus
 the families `DIMENSION`, `TOLERANCE`, `LEADER`, `HATCH`, and `SYMBOL`. An unknown query name raises
 `ValueError` rather than silently returning an empty result.
+
+## Matplotlib diagnostic plotting
+
+Install `ezmi2d[plot]` to make the optional renderer available:
+
+```python
+import matplotlib.pyplot as plt
+import ezmi2d
+
+drawing = ezmi2d.read("drawing.mi")
+fig, ax = plt.subplots()
+ezmi2d.draw(
+    drawing,
+    ax=ax,
+    curve_segments=128,
+    show_points=False,
+    show_text=True,
+)
+fig.savefig("drawing.png", dpi=160)
+```
+
+`draw()` accepts either a `Document` or one `Part` and returns the Matplotlib
+`Axes`. A document draws all directly decoded part definitions once. It does
+not flatten the assembly graph or apply instance transforms because their
+matrix convention is not yet verified. `LIN`, `ARC`, `FIL`, `BSPL`, `CIR`,
+`TEX`, and optionally `P` are displayed with diagnostic colors; MI display
+attributes and typed-but-opaque annotations are not rendered. Arc orientation
+`0` uses the counter-clockwise convention verified by the paired MI/DXF
+corpus. Unknown orientations and unresolved geometry are skipped with a
+`RuntimeWarning`.
 
 ## Entity model
 
@@ -128,12 +158,12 @@ all spans. `find_sections(number)` and `records_of_type(mi_type)` preserve sourc
 Use tighter limits for untrusted workloads:
 
 ```python
-limits = ezmi.ScanLimits(
+limits = ezmi2d.ScanLimits(
     max_file_size=64 * 1024 * 1024,
     max_decompressed_size=128 * 1024 * 1024,
     max_compression_ratio=100,
 )
-drawing = ezmi.read(uploaded_bytes, limits=limits)
+drawing = ezmi2d.read(uploaded_bytes, limits=limits)
 ```
 
 Fatal failures use this hierarchy:

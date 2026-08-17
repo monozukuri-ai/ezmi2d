@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ezmi.__main__ import main
+from ezmi2d.__main__ import main
 
 FIXTURE = Path(__file__).parents[1] / "data" / "minimal.mi"
 

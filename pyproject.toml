@@ -1,5 +1,5 @@
 [project]
-name = "ezmi"
+name = "ezmi2d"
 version = "0.1.0"
 description = "Lossless reader for PTC Creo Elements/Direct Drafting MI files powered by Rust"
 readme = "README.md"
@@ -26,28 +26,32 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/monozukuri-ai/ezmi"
-Repository = "https://github.com/monozukuri-ai/ezmi"
-Issues = "https://github.com/monozukuri-ai/ezmi/issues"
-Documentation = "https://github.com/monozukuri-ai/ezmi/blob/main/docs/api.md"
+Homepage = "https://github.com/monozukuri-ai/ezmi2d"
+Repository = "https://github.com/monozukuri-ai/ezmi2d"
+Issues = "https://github.com/monozukuri-ai/ezmi2d/issues"
+Documentation = "https://github.com/monozukuri-ai/ezmi2d/blob/main/docs/api.md"
 
 [project.optional-dependencies]
 dev = [
+    "matplotlib>=3.8,<4.0",
     "maturin>=1.13,<2.0",
     "pytest>=8.0",
     "ruff>=0.12",
+]
+plot = [
+    "matplotlib>=3.8,<4.0",
 ]
 corpus = [
     "ezdxf>=1.4,<2.0",
 ]
 
 [project.scripts]
-ezmi = "ezmi:main"
+ezmi2d = "ezmi2d:main"
 
 [tool.maturin]
-manifest-path = "crates/ezmi-python/Cargo.toml"
-module-name = "ezmi._core"
-python-packages = ["ezmi"]
+manifest-path = "crates/ezmi2d-python/Cargo.toml"
+module-name = "ezmi2d._core"
+python-packages = ["ezmi2d"]
 python-source = "src"
 include = [
     { path = "benchmarks/README.md", format = "sdist" },
@@ -56,6 +60,7 @@ include = [
     { path = "benchmarks/results/*.md", format = "sdist" },
     { path = "docs/*.md", format = "sdist" },
     { path = "fuzz/Cargo.lock", format = "sdist" },
+    { path = "examples/*.py", format = "sdist" },
     { path = "fuzz/Cargo.toml", format = "sdist" },
     { path = "fuzz/fuzz_targets/*.rs", format = "sdist" },
     { path = "samples/README.md", format = "sdist" },

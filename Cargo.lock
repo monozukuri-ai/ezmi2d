@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ezmi-core"
+name = "ezmi2d-core"
 version = "0.1.0"
 dependencies = [
  "encoding_rs",
@@ -42,10 +42,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "ezmi-python"
+name = "ezmi2d-python"
 version = "0.1.0"
 dependencies = [
- "ezmi-core",
+ "ezmi2d-core",
  "pyo3",
 ]
 

@@ -5,16 +5,16 @@ from pathlib import Path
 
 import pytest
 
-import ezmi
+import ezmi2d
 
 FIXTURE = Path(__file__).parents[1] / "data" / "minimal.mi"
 
 
 def test_scan_preserves_every_source_line_and_record_view() -> None:
     data = FIXTURE.read_bytes()
-    result = ezmi.scan(FIXTURE)
+    result = ezmi2d.scan(FIXTURE)
 
-    assert result.format == ezmi.MiFormatInfo(
+    assert result.format == ezmi2d.MiFormatInfo(
         kind="mi_text", compression=None, first_section=2, utf8_bom=False
     )
     assert result.termination == "file_marker"
@@ -35,7 +35,7 @@ def test_scan_preserves_every_source_line_and_record_view() -> None:
 
 def test_scan_preserves_crlf_and_reports_missing_file_marker() -> None:
     data = b"#~61\r\nP\r\n1\r\n0\r\n0\r\n|~\r\n"
-    result = ezmi.scan(data)
+    result = ezmi2d.scan(data)
 
     assert result.newlines.crlf == 6
     assert result.newlines.lf == 0
@@ -45,7 +45,7 @@ def test_scan_preserves_crlf_and_reports_missing_file_marker() -> None:
 
 
 def test_unterminated_entity_record_remains_accessible() -> None:
-    result = ezmi.scan(b"#~62\nLIN\n1\n2\n##~~\n")
+    result = ezmi2d.scan(b"#~62\nLIN\n1\n2\n##~~\n")
 
     assert len(result.records) == 1
     assert result.records[0].record_type is None
@@ -55,7 +55,7 @@ def test_unterminated_entity_record_remains_accessible() -> None:
 
 
 def test_symbol_section_requires_entity_terminators() -> None:
-    result = ezmi.scan(b"#~82\nSYML\n1\n0\n0\n##~~\n")
+    result = ezmi2d.scan(b"#~82\nSYML\n1\n0\n0\n##~~\n")
 
     assert result.records[0].termination == "file_boundary"
     assert {diagnostic.code for diagnostic in result.diagnostics} == {"MI_UNTERMINATED_RECORD"}
@@ -65,12 +65,12 @@ def test_gzip_container_is_decoded_without_losing_either_byte_stream() -> None:
     data = FIXTURE.read_bytes()
     compressed = gzip.compress(data, mtime=0)
 
-    candidate = ezmi.detect_format(compressed)
+    candidate = ezmi2d.detect_format(compressed)
     assert candidate.kind == "compressed_candidate"
     assert candidate.compression == "gzip"
 
-    result = ezmi.scan(compressed)
-    assert result.format == ezmi.MiFormatInfo(
+    result = ezmi2d.scan(compressed)
+    assert result.format == ezmi2d.MiFormatInfo(
         kind="mi_text", compression="gzip", first_section=2, utf8_bom=False
     )
     assert result.container_size == len(compressed)
@@ -82,52 +82,52 @@ def test_gzip_container_is_decoded_without_losing_either_byte_stream() -> None:
 
 def test_unverified_compression_families_remain_unsupported() -> None:
     zlib_candidate = bytes.fromhex("789c0300")
-    info = ezmi.detect_format(zlib_candidate)
+    info = ezmi2d.detect_format(zlib_candidate)
 
     assert info.kind == "compressed_candidate"
     assert info.compression == "zlib"
-    with pytest.raises(ezmi.UnsupportedMiError, match="not supported"):
-        ezmi.scan(zlib_candidate)
+    with pytest.raises(ezmi2d.UnsupportedMiError, match="not supported"):
+        ezmi2d.scan(zlib_candidate)
 
 
 def test_gzip_limits_and_stream_integrity_are_enforced() -> None:
     data = FIXTURE.read_bytes()
     compressed = gzip.compress(data, mtime=0)
 
-    with pytest.raises(ezmi.MiLimitError, match="input bytes"):
-        ezmi.scan(compressed, limits=ezmi.ScanLimits(max_file_size=len(compressed) - 1))
+    with pytest.raises(ezmi2d.MiLimitError, match="input bytes"):
+        ezmi2d.scan(compressed, limits=ezmi2d.ScanLimits(max_file_size=len(compressed) - 1))
 
-    with pytest.raises(ezmi.MiLimitError, match="decompressed bytes"):
-        ezmi.scan(compressed, limits=ezmi.ScanLimits(max_decompressed_size=len(data) - 1))
+    with pytest.raises(ezmi2d.MiLimitError, match="decompressed bytes"):
+        ezmi2d.scan(compressed, limits=ezmi2d.ScanLimits(max_decompressed_size=len(data) - 1))
 
-    with pytest.raises(ezmi.MiLimitError, match="compression ratio"):
-        ezmi.scan(compressed, limits=ezmi.ScanLimits(max_compression_ratio=1))
+    with pytest.raises(ezmi2d.MiLimitError, match="compression ratio"):
+        ezmi2d.scan(compressed, limits=ezmi2d.ScanLimits(max_compression_ratio=1))
 
-    with pytest.raises(ezmi.InvalidMiError, match="invalid gzip"):
-        ezmi.scan(compressed[:-4])
+    with pytest.raises(ezmi2d.InvalidMiError, match="invalid gzip"):
+        ezmi2d.scan(compressed[:-4])
 
-    with pytest.raises(ezmi.InvalidMiError, match="additional gzip members"):
-        ezmi.scan(compressed + gzip.compress(data, mtime=0))
+    with pytest.raises(ezmi2d.InvalidMiError, match="additional gzip members"):
+        ezmi2d.scan(compressed + gzip.compress(data, mtime=0))
 
 
 def test_limits_are_enforced_before_and_during_scan() -> None:
-    with pytest.raises(ezmi.MiLimitError, match="input bytes"):
-        ezmi.scan(FIXTURE, limits=ezmi.ScanLimits(max_file_size=4))
+    with pytest.raises(ezmi2d.MiLimitError, match="input bytes"):
+        ezmi2d.scan(FIXTURE, limits=ezmi2d.ScanLimits(max_file_size=4))
 
-    with pytest.raises(ezmi.MiLimitError, match="input bytes"):
-        ezmi.scan(memoryview(bytearray(8)), limits=ezmi.ScanLimits(max_file_size=4))
+    with pytest.raises(ezmi2d.MiLimitError, match="input bytes"):
+        ezmi2d.scan(memoryview(bytearray(8)), limits=ezmi2d.ScanLimits(max_file_size=4))
 
-    with pytest.raises(ezmi.MiLimitError, match="line count"):
-        ezmi.scan(FIXTURE, limits=ezmi.ScanLimits(max_lines=1))
+    with pytest.raises(ezmi2d.MiLimitError, match="line count"):
+        ezmi2d.scan(FIXTURE, limits=ezmi2d.ScanLimits(max_lines=1))
 
     with pytest.raises(ValueError, match="non-negative"):
-        ezmi.scan(FIXTURE, limits=ezmi.ScanLimits(max_records=-1))
+        ezmi2d.scan(FIXTURE, limits=ezmi2d.ScanLimits(max_records=-1))
 
 
 def test_format_detection_is_extension_independent_and_supports_utf8_bom() -> None:
-    info = ezmi.detect_format(b"\xef\xbb\xbf\r\n#~1\r\n##~~\r\n")
+    info = ezmi2d.detect_format(b"\xef\xbb\xbf\r\n#~1\r\n##~~\r\n")
     assert info.first_section == 1
     assert info.utf8_bom
 
-    with pytest.raises(ezmi.InvalidMiError):
-        ezmi.detect_format(b"// mental ray scene\n")
+    with pytest.raises(ezmi2d.InvalidMiError):
+        ezmi2d.detect_format(b"// mental ray scene\n")

@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-import ezmi
+import ezmi2d
 
 CORPUS = Path(__file__).parents[2] / "samples" / "external" / "takahiro-soarerdex" / "mi"
 DXF_CORPUS = CORPUS.parent / "dxf"
@@ -26,7 +26,7 @@ def test_downloaded_legacy_corpus_scans_losslessly() -> None:
 
     counts: Counter[str] = Counter()
     for path in files:
-        result = ezmi.scan(path)
+        result = ezmi2d.scan(path)
         assert result.format.first_section == 2
         assert result.termination == "file_marker"
         assert result.trailing_bytes == 0
@@ -57,7 +57,7 @@ def test_downloaded_legacy_corpus_decodes_the_phase5_subset() -> None:
     counts: Counter[str] = Counter()
     diagnostic_counts: Counter[str] = Counter()
     for path in files:
-        document = ezmi.read(path)
+        document = ezmi2d.read(path)
         assert document.version == "2.10"
         assert document.units == "mm"
         assert len(document.parts) == 1
@@ -100,7 +100,7 @@ def test_phase5_geometry_and_text_match_the_paired_dxf_corpus() -> None:
     files = sorted(path for path in CORPUS.iterdir() if path.is_file())
     assert len(files) == 19
     for path in files:
-        mi_document = ezmi.read(path)
+        mi_document = ezmi2d.read(path)
         dxf_path = DXF_CORPUS / f"{path.name}.DXF"
         assert dxf_path.is_file()
         dxf_document = ezdxf.readfile(dxf_path)
@@ -125,7 +125,7 @@ def test_phase5_geometry_and_text_match_the_paired_dxf_corpus() -> None:
         dxf_polylines = tuple(modelspace.query("POLYLINE"))
         assert len(mi_splines) == len(dxf_polylines)
         for spline, polyline in zip(mi_splines, dxf_polylines, strict=True):
-            assert isinstance(spline, ezmi.BSpline)
+            assert isinstance(spline, ezmi2d.BSpline)
             assert all(point is not None for point in spline.control_points)
             for sample in spline.samples:
                 assert sample.point is not None
@@ -165,9 +165,9 @@ def test_product_generated_compressed_mi_matches_its_logical_payload() -> None:
         "3bb45897b8cdbb9bc0e82048af65677274548002234c4a0190b4f0f14a1d1d65"
     )
 
-    packed_scan = ezmi.scan(compressed_bytes)
-    logical_scan = ezmi.scan(logical_bytes)
-    assert packed_scan.format == ezmi.MiFormatInfo(
+    packed_scan = ezmi2d.scan(compressed_bytes)
+    logical_scan = ezmi2d.scan(logical_bytes)
+    assert packed_scan.format == ezmi2d.MiFormatInfo(
         kind="mi_text", compression="gzip", first_section=1, utf8_bom=False
     )
     assert packed_scan.container_size == 87_506
@@ -179,8 +179,8 @@ def test_product_generated_compressed_mi_matches_its_logical_payload() -> None:
     assert len(packed_scan.records) == 4_527
     assert packed_scan.diagnostics == logical_scan.diagnostics == ()
 
-    packed = ezmi.read(compressed_bytes)
-    logical = ezmi.read(logical_bytes)
+    packed = ezmi2d.read(compressed_bytes)
+    logical = ezmi2d.read(logical_bytes)
     assert packed.version == logical.version == "3.40"
     assert packed.encoding == logical.encoding == "utf-8"
     assert len(packed.parts) == len(logical.parts) == 25
@@ -197,7 +197,7 @@ def test_product_generated_compressed_mi_matches_its_logical_payload() -> None:
     assert all(
         all(point is not None for point in spline.control_points)
         for spline in packed.query("BSPL")
-        if isinstance(spline, ezmi.BSpline)
+        if isinstance(spline, ezmi2d.BSpline)
     )
     assert packed.top_part is not None
     assert packed.top_part.name == "MANDRIL`~18"
@@ -213,23 +213,23 @@ def test_product_generated_compressed_mi_matches_its_logical_payload() -> None:
     assert packed.diagnostics == logical.diagnostics
 
 
-def _geometry_is_resolved(entity: ezmi.Graphic) -> bool:
-    if isinstance(entity, ezmi.Line):
+def _geometry_is_resolved(entity: ezmi2d.Graphic) -> bool:
+    if isinstance(entity, ezmi2d.Line):
         return entity.start is not None and entity.end is not None
-    if isinstance(entity, ezmi.Arc):
+    if isinstance(entity, ezmi2d.Arc):
         return entity.center is not None and entity.start is not None and entity.end is not None
-    if isinstance(entity, ezmi.Circle):
+    if isinstance(entity, ezmi2d.Circle):
         return (
             entity.center is not None
             and entity.circumference is not None
             and entity.radius is not None
         )
-    if isinstance(entity, ezmi.BSpline):
+    if isinstance(entity, ezmi2d.BSpline):
         return all(point is not None for point in entity.control_points)
-    return isinstance(entity, ezmi.Text)
+    return isinstance(entity, ezmi2d.Text)
 
 
-def _distance_to_spline(spline: ezmi.BSpline, point: Any) -> float:
+def _distance_to_spline(spline: ezmi2d.BSpline, point: Any) -> float:
     """Find the curve distance using a grid bracket followed by golden-section search."""
 
     start, end = spline.parameter_domain
@@ -269,8 +269,8 @@ def _point_key(value: Any) -> tuple[float, float]:
     return round(float(x), 7), round(float(y), 7)
 
 
-def _mi_line_key(entity: ezmi.Graphic) -> tuple[tuple[float, float], tuple[float, float]]:
-    assert isinstance(entity, ezmi.Line)
+def _mi_line_key(entity: ezmi2d.Graphic) -> tuple[tuple[float, float], tuple[float, float]]:
+    assert isinstance(entity, ezmi2d.Line)
     assert entity.start is not None and entity.end is not None
     return tuple(sorted((_point_key(entity.start), _point_key(entity.end))))
 
@@ -280,9 +280,9 @@ def _dxf_line_key(entity: Any) -> tuple[tuple[float, float], tuple[float, float]
 
 
 def _mi_arc_key(
-    entity: ezmi.Graphic,
+    entity: ezmi2d.Graphic,
 ) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
-    assert isinstance(entity, ezmi.Arc)
+    assert isinstance(entity, ezmi2d.Arc)
     assert entity.center is not None and entity.start is not None and entity.end is not None
     return _point_key(entity.center), _point_key(entity.start), _point_key(entity.end)
 
@@ -297,8 +297,8 @@ def _dxf_arc_key(
     )
 
 
-def _mi_circle_key(entity: ezmi.Graphic) -> tuple[tuple[float, float], float]:
-    assert isinstance(entity, ezmi.Circle)
+def _mi_circle_key(entity: ezmi2d.Graphic) -> tuple[tuple[float, float], float]:
+    assert isinstance(entity, ezmi2d.Circle)
     assert entity.center is not None and entity.radius is not None
     return _point_key(entity.center), round(entity.radius, 7)
 
@@ -308,9 +308,9 @@ def _dxf_circle_key(entity: Any) -> tuple[tuple[float, float], float]:
 
 
 def _mi_text_key(
-    entity: ezmi.Graphic,
+    entity: ezmi2d.Graphic,
 ) -> tuple[str, tuple[float, float], float]:
-    assert isinstance(entity, ezmi.Text)
+    assert isinstance(entity, ezmi2d.Text)
     assert entity.text is not None
     insertion = (entity.origin.x, entity.origin.y - entity.height / 2.0)
     return entity.text, _point_key(insertion), round(entity.height, 7)

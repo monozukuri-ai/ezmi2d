@@ -1,5 +1,5 @@
 [package]
-name = "ezmi-core"
+name = "ezmi2d-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ repository.workspace = true
 license.workspace = true
 
 [lib]
-name = "ezmi_core"
+name = "ezmi2d_core"
 
 [dependencies]
 encoding_rs = "0.8.35"

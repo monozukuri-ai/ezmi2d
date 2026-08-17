@@ -14,8 +14,8 @@ from . import MiError, RawScan, __version__, scan
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ezmi", description="Inspect MI drawing streams")
-    parser.add_argument("--version", action="version", version=f"ezmi {__version__}")
+    parser = argparse.ArgumentParser(prog="ezmi2d", description="Inspect MI drawing streams")
+    parser.add_argument("--version", action="version", version=f"ezmi2d {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
 
     inspect = commands.add_parser("inspect", help="scan one MI stream without semantic decoding")
@@ -158,7 +158,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         scan_result = scan(args.path)
     except (MiError, OSError) as error:
-        print(f"ezmi: error: {error}", file=sys.stderr)
+        print(f"ezmi2d: error: {error}", file=sys.stderr)
         return 1
 
     summary = _summary(scan_result, records=args.records, lines=args.lines)

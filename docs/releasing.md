@@ -20,7 +20,7 @@ licensed external corpus. A `SHA256SUMS` file is generated after the set passes 
 
 Configure a PyPI Trusted Publisher for:
 
-- owner/repository: `monozukuri-ai/ezmi`;
+- owner/repository: `monozukuri-ai/ezmi2d`;
 - workflow: `release.yml`;
 - environment: `pypi`.
 

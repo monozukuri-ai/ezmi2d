@@ -68,7 +68,7 @@ jobs:
         run: uv run pytest -q
 
       - name: CLI smoke test
-        run: uv run python -m ezmi inspect tests/data/minimal.mi --json --records
+        run: uv run python -m ezmi2d inspect tests/data/minimal.mi --json --records
 
       - name: Full-pipeline benchmark smoke test
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
@@ -76,8 +76,8 @@ jobs:
         run: |
           uv run python benchmarks/benchmark_pipeline.py tests/data \
             --warmup 0 --repeat 1 \
-            --json-output "${RUNNER_TEMP}/ezmi-benchmark.json" \
-            --markdown-output "${RUNNER_TEMP}/ezmi-benchmark.md"
+            --json-output "${RUNNER_TEMP}/ezmi2d-benchmark.json" \
+            --markdown-output "${RUNNER_TEMP}/ezmi2d-benchmark.md"
 
       - name: Build wheel
         run: uv run maturin build --release --locked --out dist
@@ -91,7 +91,7 @@ jobs:
           else
             VERIFY_PY=.wheel-venv/bin/python
           fi
-          "${VERIFY_PY}" -m pip install --no-index --find-links dist ezmi
+          "${VERIFY_PY}" -m pip install --no-index --find-links dist ezmi2d
           "${VERIFY_PY}" scripts/smoke_installed_package.py
 
   distribution:
@@ -134,7 +134,7 @@ jobs:
         shell: bash
         run: |
           python -m venv .sdist-venv
-          .sdist-venv/bin/python -m pip install --no-deps dist/ezmi-*.tar.gz
+          .sdist-venv/bin/python -m pip install --no-deps dist/ezmi2d-*.tar.gz
           .sdist-venv/bin/python scripts/smoke_installed_package.py
 
   fuzz:

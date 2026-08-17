@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use ezmi_core::{read_with_encoding, scan, ScanOptions};
+use ezmi2d_core::{read_with_encoding, scan, ScanOptions};
 use flate2::write::GzEncoder;
 use flate2::Compression;
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise an installed ezmi distribution without importing the source tree."""
+"""Exercise an installed ezmi2d distribution without importing the source tree."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import sys
 from importlib.metadata import metadata, version
 from pathlib import Path
 
-import ezmi
+import ezmi2d
 
 PACKAGE_FILES = {
     "__init__.py",
@@ -19,6 +19,7 @@ PACKAGE_FILES = {
     "diagnostics.py",
     "document.py",
     "entities.py",
+    "plotting.py",
     "raw.py",
     "py.typed",
 }
@@ -37,6 +38,7 @@ PUBLIC_NAMES = {
     "ScanLimits",
     "Symbol",
     "Text",
+    "draw",
     "detect_format",
     "read",
     "readfile",
@@ -49,32 +51,32 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--version")
     args = parser.parse_args()
-    expected_version = args.version or version("ezmi")
+    expected_version = args.version or version("ezmi2d")
 
-    assert version("ezmi") == expected_version
-    assert ezmi.__version__ == expected_version
-    assert ezmi._core.core_version() == expected_version
-    assert metadata("ezmi")["Requires-Python"] == ">=3.10"
+    assert version("ezmi2d") == expected_version
+    assert ezmi2d.__version__ == expected_version
+    assert ezmi2d._core.core_version() == expected_version
+    assert metadata("ezmi2d")["Requires-Python"] == ">=3.10"
     for name in PUBLIC_NAMES:
-        assert hasattr(ezmi, name), name
+        assert hasattr(ezmi2d, name), name
 
     source = b"#~61\nP\n1\n1.25\n2.5\n|~\n##~~\n"
-    raw = ezmi.scan(source)
-    drawing = ezmi.read(source)
+    raw = ezmi2d.scan(source)
+    drawing = ezmi2d.read(source)
     point = drawing.entitydb[1]
     assert raw.termination == "file_marker"
     assert raw.source_view.readonly
-    assert isinstance(point, ezmi.Point)
-    assert point.location == ezmi.Vec2(1.25, 2.5)
+    assert isinstance(point, ezmi2d.Point)
+    assert point.location == ezmi2d.Vec2(1.25, 2.5)
 
     compressed = gzip.compress(source, mtime=0)
-    packed = ezmi.read(compressed)
+    packed = ezmi2d.read(compressed)
     assert packed.raw.format.compression == "gzip"
     assert packed.raw.container_bytes == compressed
     assert packed.raw.source_bytes == source
     assert packed.entitydb[1].location == point.location
 
-    package = Path(ezmi.__file__).parent
+    package = Path(ezmi2d.__file__).parent
     for relative in PACKAGE_FILES:
         assert (package / relative).is_file(), relative
     assert any(
@@ -83,13 +85,13 @@ def main() -> int:
     )
 
     completed = subprocess.run(
-        [sys.executable, "-m", "ezmi", "--version"],
+        [sys.executable, "-m", "ezmi2d", "--version"],
         check=True,
         capture_output=True,
         text=True,
     )
-    assert completed.stdout.strip() == f"ezmi {expected_version}"
-    print(f"installed ezmi {expected_version} smoke passed on Python {sys.version.split()[0]}")
+    assert completed.stdout.strip() == f"ezmi2d {expected_version}"
+    print(f"installed ezmi2d {expected_version} smoke passed on Python {sys.version.split()[0]}")
     return 0
 
 

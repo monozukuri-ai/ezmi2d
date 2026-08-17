@@ -1,4 +1,4 @@
-use ezmi_core::{scan, FileTermination, RecordTermination, ScanOptions};
+use ezmi2d_core::{scan, FileTermination, RecordTermination, ScanOptions};
 
 const MINIMAL_MI: &[u8] = include_bytes!("../../../tests/data/minimal.mi");
 

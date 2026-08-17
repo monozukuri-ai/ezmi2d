@@ -36,7 +36,7 @@
     }
   },
   "environment": {
-    "ezmi": "0.1.0",
+    "ezmi2d": "0.1.0",
     "machine": "x86_64",
     "platform": "Linux-6.8.0-136-generic-x86_64-with-glibc2.39",
     "processor": "x86_64",
@@ -1687,11 +1687,11 @@
   "repeat": 5,
   "schema_version": 1,
   "stage_descriptions": {
-    "detect_format_bytes": "ezmi.detect_format(bytes); signature/probe only",
-    "read_bytes": "ezmi.read(bytes); decompression, raw and semantic parse, Python model",
+    "detect_format_bytes": "ezmi2d.detect_format(bytes); signature/probe only",
+    "read_bytes": "ezmi2d.read(bytes); decompression, raw and semantic parse, Python model",
     "read_container": "Path.read_bytes(); container I/O only",
-    "read_path_end_to_end": "ezmi.read(path); I/O through complete semantic Python model",
-    "scan_bytes": "ezmi.scan(bytes); decompression, raw scan, and Python raw model"
+    "read_path_end_to_end": "ezmi2d.read(path); I/O through complete semantic Python model",
+    "scan_bytes": "ezmi2d.scan(bytes); decompression, raw scan, and Python raw model"
   },
   "warmup": 1
 }

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import ezmi
+import ezmi2d
 
 FIXTURE = Path(__file__).parents[1] / "data" / "geometry.mi"
 UTF8_FIXTURE = Path(__file__).parents[1] / "data" / "text-utf8.mi"
@@ -69,9 +69,9 @@ def _text_document_bytes(
 
 def test_declared_shift_jis_decodes_typed_text_without_replacement() -> None:
     content = "ソアラーデックス".encode("cp932")
-    document = ezmi.read(_text_document_bytes(content))
+    document = ezmi2d.read(_text_document_bytes(content))
 
-    assert document.encoding_info == ezmi.EncodingInfo("shift_jis", "declared", "SJIS")
+    assert document.encoding_info == ezmi2d.EncodingInfo("shift_jis", "declared", "SJIS")
     assert document.encoding == "shift_jis"
     assert document.encoding_source == "declared"
     assert document.declared_encoding == "SJIS"
@@ -81,7 +81,7 @@ def test_declared_shift_jis_decodes_typed_text_without_replacement() -> None:
     assert document.top_part.texts == document.texts
 
     text = document.texts[0]
-    assert isinstance(document.get(13), ezmi.Text)
+    assert isinstance(document.get(13), ezmi2d.Text)
     assert document.query("TEX") == (text,)
     assert document.query("TEXT") == (text,)
     assert text.text == "ソアラーデックス"
@@ -90,7 +90,7 @@ def test_declared_shift_jis_decodes_typed_text_without_replacement() -> None:
     assert text.content_value.encoding == "shift_jis"
     assert text.font_name == "hp_i3098_v"
     assert text.font_name_bytes == b"hp_i3098_v"
-    assert text.origin == ezmi.Vec2(25.0, 12.0)
+    assert text.origin == ezmi2d.Vec2(25.0, 12.0)
     assert text.transform_values == (1.0, 0.0, 25.0, 0.0, 1.0, 12.0, 0.0, 0.0, 1.0)
     assert text.size_values == (3.5, 3.5)
     assert text.height == pytest.approx(3.5)
@@ -103,21 +103,21 @@ def test_legacy_encoding_can_be_inferred_or_overridden() -> None:
     content = "日本語".encode("cp932")
     data = _text_document_bytes(content, declaration=None)
 
-    inferred = ezmi.read(data)
+    inferred = ezmi2d.read(data)
     assert inferred.encoding == "shift_jis"
     assert inferred.encoding_source == "heuristic"
     assert inferred.texts[0].text == "日本語"
     assert [diagnostic.code for diagnostic in inferred.diagnostics] == ["MI_ENCODING_GUESSED"]
 
-    overridden = ezmi.read(data, encoding="cp932")
-    assert overridden.encoding_info == ezmi.EncodingInfo("shift_jis", "override", None)
+    overridden = ezmi2d.read(data, encoding="cp932")
+    assert overridden.encoding_info == ezmi2d.EncodingInfo("shift_jis", "override", None)
     assert overridden.texts[0].text == "日本語"
     assert overridden.diagnostics == ()
 
 
 def test_mi_320_uses_utf8_and_bom_has_higher_precedence() -> None:
-    versioned = ezmi.read(UTF8_FIXTURE)
-    assert versioned.encoding_info == ezmi.EncodingInfo("utf-8", "mi_version", "UTF-8")
+    versioned = ezmi2d.read(UTF8_FIXTURE)
+    assert versioned.encoding_info == ezmi2d.EncodingInfo("utf-8", "mi_version", "UTF-8")
     assert versioned.texts[0].text == "日本語 café"
     assert {diagnostic.code for diagnostic in versioned.diagnostics} == {
         "MI_GLOBAL_LAYOUT_UNVERIFIED"
@@ -126,17 +126,17 @@ def test_mi_320_uses_utf8_and_bom_has_higher_precedence() -> None:
     bom_data = b"\xef\xbb\xbf" + _text_document_bytes(
         "日本語".encode(), declaration=b"ENCODING:SJIS"
     )
-    bom = ezmi.read(bom_data)
-    assert bom.encoding_info == ezmi.EncodingInfo("utf-8", "utf8_bom", "SJIS")
+    bom = ezmi2d.read(bom_data)
+    assert bom.encoding_info == ezmi2d.EncodingInfo("utf-8", "utf8_bom", "SJIS")
     assert bom.texts[0].text == "日本語"
     assert [diagnostic.code for diagnostic in bom.diagnostics] == ["MI_ENCODING_CONFLICT"]
 
 
 def test_hp_roman8_is_supported_for_older_files() -> None:
     data = _text_document_bytes(b"caf\xc5", declaration=b"ENCODING:ROMAN8")
-    document = ezmi.read(data)
+    document = ezmi2d.read(data)
 
-    assert document.encoding_info == ezmi.EncodingInfo("hp-roman8", "declared", "ROMAN8")
+    assert document.encoding_info == ezmi2d.EncodingInfo("hp-roman8", "declared", "ROMAN8")
     assert document.texts[0].text == "café"
     assert document.texts[0].text_bytes == b"caf\xc5"
 
@@ -146,7 +146,7 @@ def test_decode_error_retains_raw_bytes_and_reports_the_exact_source_byte() -> N
     data = _text_document_bytes(content)
     invalid_offset = data.index(content) + 3
 
-    document = ezmi.read(data)
+    document = ezmi2d.read(data)
     text = document.texts[0]
     assert text.text is None
     assert text.text_bytes == content
@@ -168,17 +168,17 @@ def test_unknown_declaration_is_lossless_and_override_labels_are_validated() -> 
     content = "日本語".encode("cp932")
     data = _text_document_bytes(content, declaration=b"ENCODING:VENDOR-UNKNOWN")
 
-    document = ezmi.read(data)
-    assert document.encoding_info == ezmi.EncodingInfo(None, "declared", "VENDOR-UNKNOWN")
+    document = ezmi2d.read(data)
+    assert document.encoding_info == ezmi2d.EncodingInfo(None, "declared", "VENDOR-UNKNOWN")
     assert document.texts[0].text is None
     assert document.texts[0].text_bytes == content
     assert [diagnostic.code for diagnostic in document.diagnostics] == [
         "MI_UNSUPPORTED_DECLARED_ENCODING"
     ]
 
-    recovered = ezmi.read(data, encoding="windows-31j")
-    assert recovered.encoding_info == ezmi.EncodingInfo("shift_jis", "override", "VENDOR-UNKNOWN")
+    recovered = ezmi2d.read(data, encoding="windows-31j")
+    assert recovered.encoding_info == ezmi2d.EncodingInfo("shift_jis", "override", "VENDOR-UNKNOWN")
     assert recovered.texts[0].text == "日本語"
 
     with pytest.raises(ValueError, match="unsupported MI text encoding"):
-        ezmi.read(data, encoding="not-an-encoding")
+        ezmi2d.read(data, encoding="not-an-encoding")

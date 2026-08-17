@@ -1,5 +1,5 @@
 [package]
-name = "ezmi-fuzz"
+name = "ezmi2d-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
@@ -8,7 +8,7 @@ edition = "2021"
 cargo-fuzz = true
 
 [dependencies]
-ezmi-core = { path = "../crates/ezmi-core" }
+ezmi2d-core = { path = "../crates/ezmi2d-core" }
 libfuzzer-sys = "0.4"
 
 [[bin]]

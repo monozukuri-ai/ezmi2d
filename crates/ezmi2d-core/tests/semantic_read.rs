@@ -1,4 +1,4 @@
-use ezmi_core::{read, EncodingSource, ScanOptions, SemanticEntity, TextEncoding};
+use ezmi2d_core::{read, EncodingSource, ScanOptions, SemanticEntity, TextEncoding};
 
 const GEOMETRY_MI: &[u8] = include_bytes!("../../../tests/data/geometry.mi");
 const PHASE5_MI: &[u8] = include_bytes!("../../../tests/data/phase5.mi");
@@ -54,8 +54,8 @@ fn decodes_the_verified_legacy_geometry_subset() {
 
 #[test]
 fn normalizes_angles_to_one_positive_turn() {
-    let center = ezmi_core::Point2::new(0.0, 0.0);
-    let below = ezmi_core::Point2::new(1.0, -1.0);
+    let center = ezmi2d_core::Point2::new(0.0, 0.0);
+    let below = ezmi2d_core::Point2::new(1.0, -1.0);
 
     let angle = center.angle_to(&below);
     assert!(angle > std::f64::consts::PI);
@@ -108,7 +108,7 @@ fn decodes_phase5_curves_annotations_and_part_structure() {
     assert_eq!(spline.parameter_domain(), Some((0.0, 1.0)));
     assert_eq!(
         spline.evaluate(0.5),
-        Some(ezmi_core::Point2::new(0.5, 0.75))
+        Some(ezmi2d_core::Point2::new(0.5, 0.75))
     );
     assert_eq!(spline.samples.len(), 2);
 

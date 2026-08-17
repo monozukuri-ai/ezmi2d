@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "crates/ezmi-core",
-    "crates/ezmi-python",
+    "crates/ezmi2d-core",
+    "crates/ezmi2d-python",
 ]
 resolver = "2"
 
@@ -11,7 +11,7 @@ edition = "2021"
 rust-version = "1.83"
 authors = ["neka-nat <nekanat.stock@gmail.com>"]
 description = "Lossless reader for PTC Creo Elements/Direct Drafting MI files"
-repository = "https://github.com/monozukuri-ai/ezmi"
+repository = "https://github.com/monozukuri-ai/ezmi2d"
 license = "MIT"
 
 [workspace.dependencies]

@@ -1,6 +1,6 @@
 #![no_main]
 
-use ezmi_core::{read_with_encoding, ScanOptions};
+use ezmi2d_core::{read_with_encoding, ScanOptions};
 use libfuzzer_sys::fuzz_target;
 
 const FUZZ_OPTIONS: ScanOptions = ScanOptions {
