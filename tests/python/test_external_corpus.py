@@ -56,6 +56,7 @@ def test_downloaded_legacy_corpus_decodes_the_phase5_subset() -> None:
 
     counts: Counter[str] = Counter()
     diagnostic_counts: Counter[str] = Counter()
+    direction_counts: Counter[tuple[str, int, bool | None]] = Counter()
     for path in files:
         document = ezmi2d.read(path)
         assert document.version == "2.10"
@@ -73,6 +74,11 @@ def test_downloaded_legacy_corpus_decodes_the_phase5_subset() -> None:
         assert all("\ufffd" not in text.text for text in document.texts if text.text is not None)
 
         counts.update(entity.mi_type for entity in document.all_entities)
+        direction_counts.update(
+            (entity.mi_type, entity.orientation, entity.ccw)
+            for entity in document.entities
+            if isinstance(entity, (ezmi2d.Arc, ezmi2d.Fillet))
+        )
         diagnostic_counts.update(diagnostic.code for diagnostic in document.diagnostics)
 
     assert counts == {
@@ -86,6 +92,10 @@ def test_downloaded_legacy_corpus_decodes_the_phase5_subset() -> None:
         "FIL": 353,
         "BSPL": 6,
         "TEX": 57,
+    }
+    assert direction_counts == {
+        ("ARC", 0, True): 1_059,
+        ("FIL", 0, True): 353,
     }
     assert diagnostic_counts == {
         "MI_ENCODING_GUESSED": 19,
@@ -185,8 +195,8 @@ def test_product_generated_compressed_mi_matches_its_logical_payload() -> None:
     assert packed.encoding == logical.encoding == "utf-8"
     assert len(packed.parts) == len(logical.parts) == 25
     assert len(packed.all_entities) == len(logical.all_entities) == 4_499
-    assert len(packed.entities) == len(logical.entities) == 216
-    assert len(packed.texts) == len(logical.texts) == 35
+    assert len(packed.entities) == len(logical.entities) == 1_261
+    assert len(packed.texts) == len(logical.texts) == 57
     assert len(packed.annotations) == len(logical.annotations) == 88
     assert len(packed.dimensions) == len(logical.dimensions) == 46
     assert len(packed.dimension_tolerances) == len(logical.dimension_tolerances) == 10
@@ -194,6 +204,88 @@ def test_product_generated_compressed_mi_matches_its_logical_payload() -> None:
     assert len(packed.hatches) == len(logical.hatches) == 9
     assert len(packed.symbols) == len(logical.symbols) == 16
     assert len(packed.query("BSPL")) == len(logical.query("BSPL")) == 88
+    assert len(packed.query("ARC")) == len(logical.query("ARC")) == 187
+    assert all(
+        isinstance(arc, ezmi2d.Arc)
+        and arc.orientation == 0
+        and arc.ccw is True
+        and arc.display_values is None
+        and arc.center is not None
+        and arc.start is not None
+        and arc.end is not None
+        for arc in packed.query("ARC")
+    )
+    first_line = packed.query("LIN")[0]
+    assert isinstance(first_line, ezmi2d.Line)
+    assert first_line.display_values is None
+    assert (first_line.color, first_line.linetype, first_line.lineweight) == (7, 0, 0.5)
+    assert first_line.visibility is None
+    assert first_line.visibility_value == 0
+    assert len(first_line.properties) == 7
+    assert all(
+        isinstance(value, ezmi2d.AssociatedStringsProperty) for value in first_line.properties
+    )
+
+    rotated_texts = [text for text in packed.texts if text.rotation > 1e-12]
+    assert len(rotated_texts) == 2
+    assert all(text.rotation == pytest.approx(math.pi / 2.0) for text in rotated_texts)
+    assert all(text.mirror is False for text in packed.texts)
+    assert all(
+        text.width_factor == pytest.approx(text.size_values[0] / text.size_values[1])
+        for text in packed.texts
+    )
+    assert any(len(text.lines) > 1 for text in packed.texts)
+    assert all(1 <= text.alignment <= 9 for text in packed.texts)
+    assert all(
+        isinstance(dimension.dimension_style, ezmi2d.DimensionDisplayAttributeProperty)
+        and isinstance(dimension.text_style, ezmi2d.DimensionTextFormatProperty)
+        and all(value is not None for value in dimension.reference_geometries)
+        and all(value is not None for value in dimension.reference_points)
+        and dimension.formatted_text is not None
+        for dimension in packed.dimensions
+    )
+    assert sum(len(dimension.tolerance_ids) for dimension in packed.dimensions) == 10
+    assert all(
+        isinstance(tolerance.text_style, ezmi2d.DimensionTextFormatProperty)
+        and tolerance.upper_text is not None
+        and tolerance.lower_text is not None
+        for tolerance in packed.dimension_tolerances
+    )
+    assert all(
+        len(leader.vertices) == 2
+        and len(leader.points) == 2
+        and all(point.elevation == 0.0 for point in leader.points)
+        for leader in packed.leaders
+    )
+    assert len(packed.contours) == 11
+    assert all(contour.closed and contour.orientation == 0 for contour in packed.contours)
+    assert (
+        sum(component is None for contour in packed.contours for component in contour.components)
+        == 1
+    )
+    assert len(packed.hatch_associations) == 9
+    assert sorted(len(hatch.boundary_loops) for hatch in packed.hatches) == [1] * 8 + [3]
+    assert all(hatch.pattern is packed.get(30) for hatch in packed.hatches)
+    assert isinstance(packed.get(30), ezmi2d.HatchPatternProperty)
+    assert packed.get(30).lines == (
+        ezmi2d.HatchPatternLine(
+            offset=0.0,
+            distance=1.0,
+            angle=0.0,
+            color=667546301,
+            linetype=0,
+        ),
+    )
+    assert all(
+        association.hatch is not None
+        and association.outer_loop is not None
+        and all(loop is not None for loop in association.inner_loops)
+        for association in packed.hatch_associations
+    )
+    assert all(
+        len(symbol.components) == 3 and all(value is not None for value in symbol.components)
+        for symbol in packed.symbols
+    )
     assert all(
         all(point is not None for point in spline.control_points)
         for spline in packed.query("BSPL")

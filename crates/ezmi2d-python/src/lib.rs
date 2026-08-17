@@ -2,10 +2,11 @@
 
 use ezmi2d_core::{
     detect_format, read_input_with_encoding, scan_input, ArcEntity, AssemblyInstance,
-    BSplineEntity, Bounds2, CircleEntity, Diagnostic, EncodingInfo, GlobalInfo, GraphicHeader,
-    LineEntity, MiError as CoreMiError, MiFormatInfo, Part, Point2, RawDocument, RawLine,
-    RawRecord, RawSection, ScanOptions, SemanticDocument, SemanticEntity, SourceSpan,
-    StructuredEntity, TextEntity, TextValue,
+    BSplineEntity, Bounds2, CircleEntity, ContourEntity, Diagnostic, DimensionEntity,
+    DimensionToleranceEntity, EncodingInfo, GlobalInfo, GraphicHeader, HatchAssociationEntity,
+    HatchEntity, LeaderEntity, LineEntity, MiError as CoreMiError, MiFormatInfo, Part, Point2,
+    RawDocument, RawLine, RawRecord, RawSection, ScanOptions, SemanticDocument, SemanticEntity,
+    SourceSpan, SymbolEntity, TextEntity, TextValue,
 };
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyValueError};
@@ -298,12 +299,12 @@ fn entity_dict<'py>(py: Python<'py>, entity: &SemanticEntity) -> PyResult<Bound<
         }
         SemanticEntity::Arc(arc) => {
             result.set_item("kind", "arc")?;
-            set_graphic_fields(&result, &arc.graphic)?;
+            set_optional_graphic_fields(py, &result, arc.graphic.as_ref())?;
             set_arc_fields(py, &result, arc)?;
         }
         SemanticEntity::Fillet(fillet) => {
             result.set_item("kind", "fillet")?;
-            set_graphic_fields(&result, &fillet.graphic)?;
+            set_optional_graphic_fields(py, &result, fillet.graphic.as_ref())?;
             set_arc_fields(py, &result, fillet)?;
         }
         SemanticEntity::BSpline(spline) => {
@@ -321,19 +322,35 @@ fn entity_dict<'py>(py: Python<'py>, entity: &SemanticEntity) -> PyResult<Bound<
             set_text_fields(py, &result, text)?;
         }
         SemanticEntity::Dimension(value) => {
-            set_structured_fields(py, &result, "dimension", value)?;
+            result.set_item("kind", "dimension")?;
+            set_dimension_fields(py, &result, value)?;
         }
         SemanticEntity::DimensionTolerance(value) => {
-            set_structured_fields(py, &result, "dimension_tolerance", value)?;
+            result.set_item("kind", "dimension_tolerance")?;
+            set_dimension_tolerance_fields(py, &result, value)?;
         }
         SemanticEntity::Leader(value) => {
-            set_structured_fields(py, &result, "leader", value)?;
+            result.set_item("kind", "leader")?;
+            set_graphic_fields(&result, &value.graphic)?;
+            set_leader_fields(py, &result, value)?;
+        }
+        SemanticEntity::Contour(value) => {
+            result.set_item("kind", "contour")?;
+            set_graphic_fields(&result, &value.graphic)?;
+            set_contour_fields(py, &result, value)?;
         }
         SemanticEntity::Hatch(value) => {
-            set_structured_fields(py, &result, "hatch", value)?;
+            result.set_item("kind", "hatch")?;
+            set_graphic_fields(&result, &value.graphic)?;
+            set_hatch_fields(py, &result, value)?;
+        }
+        SemanticEntity::HatchAssociation(value) => {
+            result.set_item("kind", "hatch_association")?;
+            set_hatch_association_fields(py, &result, value)?;
         }
         SemanticEntity::Symbol(value) => {
-            set_structured_fields(py, &result, "symbol", value)?;
+            result.set_item("kind", "symbol")?;
+            set_symbol_fields(py, &result, value)?;
         }
         SemanticEntity::Property(property) => {
             result.set_item("kind", "property")?;
@@ -342,6 +359,56 @@ fn entity_dict<'py>(py: Python<'py>, entity: &SemanticEntity) -> PyResult<Bound<
                 values.append(PyBytes::new(py, value))?;
             }
             result.set_item("values", values)?;
+            if let Some(status) = &property.part_status {
+                let status_value = PyDict::new(py);
+                status_value.set_item("shared", status.shared)?;
+                status_value.set_item("scale_modifiable", status.scale_modifiable)?;
+                result.set_item("part_status", status_value)?;
+            } else {
+                result.set_item("part_status", py.None())?;
+            }
+            if let Some(strings) = &property.associated_strings {
+                let string_values = PyList::empty(py);
+                for value in strings {
+                    string_values.append(text_dict(py, value)?)?;
+                }
+                result.set_item("associated_strings", string_values)?;
+            } else {
+                result.set_item("associated_strings", py.None())?;
+            }
+            if let Some(attribute) = &property.dimension_text_attribute {
+                let value = PyDict::new(py);
+                value.set_item("font_name", text_dict(py, &attribute.font_name)?)?;
+                value.set_item(
+                    "alternate_font_name",
+                    text_dict(py, &attribute.alternate_font_name)?,
+                )?;
+                value.set_item(
+                    "symbol_font_name",
+                    text_dict(py, &attribute.symbol_font_name)?,
+                )?;
+                value.set_item("definition_values", &attribute.definition_values)?;
+                result.set_item("dimension_text_attribute", value)?;
+            } else {
+                result.set_item("dimension_text_attribute", py.None())?;
+            }
+            result.set_item("integer_definition", property.integer_definition.as_deref())?;
+            result.set_item("numeric_definition", property.numeric_definition.as_deref())?;
+            if let Some(pattern) = &property.hatch_pattern {
+                let lines = PyList::empty(py);
+                for line in &pattern.lines {
+                    let value = PyDict::new(py);
+                    value.set_item("offset", line.offset)?;
+                    value.set_item("distance", line.distance)?;
+                    value.set_item("angle", line.angle)?;
+                    value.set_item("color", line.color)?;
+                    value.set_item("linetype", line.linetype)?;
+                    lines.append(value)?;
+                }
+                result.set_item("hatch_pattern", lines)?;
+            } else {
+                result.set_item("hatch_pattern", py.None())?;
+            }
         }
         SemanticEntity::Assembly(assembly) => {
             result.set_item("kind", "assembly")?;
@@ -362,13 +429,103 @@ fn entity_dict<'py>(py: Python<'py>, entity: &SemanticEntity) -> PyResult<Bound<
     Ok(result)
 }
 
-fn set_structured_fields(
+fn set_dimension_fields(
     py: Python<'_>,
     result: &Bound<'_, PyDict>,
-    kind: &str,
-    value: &StructuredEntity,
+    value: &DimensionEntity,
 ) -> PyResult<()> {
-    result.set_item("kind", kind)?;
+    result.set_item("property_ids", &value.property_ids)?;
+    result.set_item("reference_geometry_ids", &value.reference_geometry_ids)?;
+    result.set_item("reference_point_ids", &value.reference_point_ids)?;
+    result.set_item("text_position", point_dict(py, &value.text_position)?)?;
+    result.set_item("measurement", value.measurement)?;
+    result.set_item("formatted_text", text_dict(py, &value.formatted_text)?)?;
+    result.set_item("dimension_style_id", value.dimension_style_id)?;
+    result.set_item("text_style_id", value.text_style_id)?;
+    result.set_item("tolerance_ids", &value.tolerance_ids)?;
+    result.set_item("values", byte_values(py, &value.values)?)?;
+    Ok(())
+}
+
+fn set_dimension_tolerance_fields(
+    py: Python<'_>,
+    result: &Bound<'_, PyDict>,
+    value: &DimensionToleranceEntity,
+) -> PyResult<()> {
+    result.set_item("definition_value", value.definition_value)?;
+    result.set_item("upper_value", value.upper_value)?;
+    result.set_item("lower_value", value.lower_value)?;
+    result.set_item("format_value", value.format_value)?;
+    result.set_item("upper_text", text_dict(py, &value.upper_text)?)?;
+    result.set_item("lower_text", text_dict(py, &value.lower_text)?)?;
+    result.set_item("text_style_id", value.text_style_id)?;
+    result.set_item("alignment", value.alignment)?;
+    result.set_item("values", byte_values(py, &value.values)?)?;
+    Ok(())
+}
+
+fn set_leader_fields(
+    py: Python<'_>,
+    result: &Bound<'_, PyDict>,
+    value: &LeaderEntity,
+) -> PyResult<()> {
+    result.set_item("arrow_type", value.arrow_type)?;
+    result.set_item("arrow_size", value.arrow_size)?;
+    let points = PyList::empty(py);
+    for point in &value.points {
+        let row = point_dict(py, &point.location)?;
+        row.set_item("z", point.elevation)?;
+        points.append(row)?;
+    }
+    result.set_item("points", points)?;
+    result.set_item("values", byte_values(py, &value.values)?)?;
+    Ok(())
+}
+
+fn set_contour_fields(
+    py: Python<'_>,
+    result: &Bound<'_, PyDict>,
+    value: &ContourEntity,
+) -> PyResult<()> {
+    result.set_item("closed", value.closed)?;
+    result.set_item("orientation", value.orientation)?;
+    result.set_item("component_ids", &value.component_ids)?;
+    result.set_item("values", byte_values(py, &value.values)?)?;
+    Ok(())
+}
+
+fn set_hatch_fields(
+    py: Python<'_>,
+    result: &Bound<'_, PyDict>,
+    value: &HatchEntity,
+) -> PyResult<()> {
+    result.set_item("reference_point", point_dict(py, &value.reference_point)?)?;
+    result.set_item("angle", value.angle)?;
+    result.set_item("spacing", value.spacing)?;
+    result.set_item("boundary_loop_ids", &value.boundary_loop_ids)?;
+    result.set_item("values", byte_values(py, &value.values)?)?;
+    Ok(())
+}
+
+fn set_hatch_association_fields(
+    py: Python<'_>,
+    result: &Bound<'_, PyDict>,
+    value: &HatchAssociationEntity,
+) -> PyResult<()> {
+    result.set_item("property_ids", &value.property_ids)?;
+    result.set_item("hatch_id", value.hatch_id)?;
+    result.set_item("outer_loop_id", value.outer_loop_id)?;
+    result.set_item("inner_loop_ids", &value.inner_loop_ids)?;
+    result.set_item("values", byte_values(py, &value.values)?)?;
+    Ok(())
+}
+
+fn set_symbol_fields(
+    py: Python<'_>,
+    result: &Bound<'_, PyDict>,
+    value: &SymbolEntity,
+) -> PyResult<()> {
+    result.set_item("component_ids", &value.component_ids)?;
     result.set_item("values", byte_values(py, &value.values)?)?;
     Ok(())
 }
@@ -410,12 +567,7 @@ fn set_bspline_fields(
     result: &Bound<'_, PyDict>,
     spline: &BSplineEntity,
 ) -> PyResult<()> {
-    if let Some(graphic) = &spline.graphic {
-        set_graphic_fields(result, graphic)?;
-    } else {
-        result.set_item("display_values", py.None())?;
-        result.set_item("property_id", py.None())?;
-    }
+    set_optional_graphic_fields(py, result, spline.graphic.as_ref())?;
     result.set_item("prefix_values", byte_values(py, &spline.prefix_values)?)?;
     result.set_item("order", spline.order)?;
     result.set_item("degree", spline.degree())?;
@@ -423,6 +575,10 @@ fn set_bspline_fields(
         "definition_values",
         byte_values(py, &spline.definition_values)?,
     )?;
+    result.set_item("closed", spline.closed)?;
+    result.set_item("periodic", spline.periodic)?;
+    result.set_item("rational", spline.rational)?;
+    result.set_item("weights", spline.weights.as_deref())?;
     result.set_item("parameter_max", spline.parameter_max)?;
     result.set_item("parameter_domain", spline.parameter_domain())?;
     result.set_item("start_id", spline.start_id)?;
@@ -451,11 +607,27 @@ fn set_bspline_fields(
 }
 
 fn set_text_fields(py: Python<'_>, result: &Bound<'_, PyDict>, text: &TextEntity) -> PyResult<()> {
+    result.set_item("alignment", text.alignment)?;
     result.set_item("transform_values", text.transform_values.to_vec())?;
     result.set_item("origin", point_dict(py, &text.origin())?)?;
+    result.set_item("rotation", text.rotation())?;
+    result.set_item("width_factor", text.width_factor())?;
+    result.set_item("mirrored", text.is_mirrored())?;
     result.set_item("font_name", text_dict(py, &text.font_name)?)?;
+    set_optional_text(
+        py,
+        result,
+        "alternate_font_name",
+        text.alternate_font_name.as_ref(),
+    )?;
     result.set_item("size_values", text.size_values.to_vec())?;
     result.set_item("height", text.height())?;
+    result.set_item("line_spacing", text.line_spacing)?;
+    let lines = PyList::empty(py);
+    for line in &text.lines {
+        lines.append(text_dict(py, line)?)?;
+    }
+    result.set_item("lines", lines)?;
     result.set_item("content", text_dict(py, &text.content)?)?;
     let values = PyList::empty(py);
     for value in &text.values {
@@ -466,9 +638,38 @@ fn set_text_fields(py: Python<'_>, result: &Bound<'_, PyDict>, text: &TextEntity
 }
 
 fn set_graphic_fields(result: &Bound<'_, PyDict>, graphic: &GraphicHeader) -> PyResult<()> {
-    result.set_item("display_values", graphic.display_values.to_vec())?;
+    result.set_item(
+        "display_values",
+        graphic.display_values.map(|values| values.to_vec()),
+    )?;
+    result.set_item("color", graphic.color)?;
+    result.set_item("linetype", graphic.linetype)?;
+    result.set_item("lineweight", graphic.lineweight)?;
+    result.set_item("visibility", graphic.visibility)?;
+    result.set_item("visibility_value", graphic.visibility_value)?;
+    result.set_item("property_ids", &graphic.property_ids)?;
     result.set_item("property_id", graphic.property_id)?;
     Ok(())
+}
+
+fn set_optional_graphic_fields(
+    py: Python<'_>,
+    result: &Bound<'_, PyDict>,
+    graphic: Option<&GraphicHeader>,
+) -> PyResult<()> {
+    if let Some(graphic) = graphic {
+        set_graphic_fields(result, graphic)
+    } else {
+        result.set_item("display_values", py.None())?;
+        result.set_item("color", py.None())?;
+        result.set_item("linetype", py.None())?;
+        result.set_item("lineweight", py.None())?;
+        result.set_item("visibility", py.None())?;
+        result.set_item("visibility_value", py.None())?;
+        result.set_item("property_ids", Vec::<u64>::new())?;
+        result.set_item("property_id", py.None())?;
+        Ok(())
+    }
 }
 
 fn set_line_fields(py: Python<'_>, result: &Bound<'_, PyDict>, line: &LineEntity) -> PyResult<()> {
@@ -480,10 +681,12 @@ fn set_line_fields(py: Python<'_>, result: &Bound<'_, PyDict>, line: &LineEntity
 }
 
 fn set_arc_fields(py: Python<'_>, result: &Bound<'_, PyDict>, arc: &ArcEntity) -> PyResult<()> {
+    result.set_item("prefix_values", byte_values(py, &arc.prefix_values)?)?;
     result.set_item("center_id", arc.center_id)?;
     result.set_item("start_id", arc.start_id)?;
     result.set_item("end_id", arc.end_id)?;
     result.set_item("orientation", arc.orientation)?;
+    result.set_item("ccw", arc.ccw())?;
     result.set_item("center", optional_point_dict(py, arc.center.as_ref())?)?;
     result.set_item("start", optional_point_dict(py, arc.start.as_ref())?)?;
     result.set_item("end", optional_point_dict(py, arc.end.as_ref())?)?;

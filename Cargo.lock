@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "ezmi2d-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "encoding_rs",
  "flate2",
@@ -43,7 +43,7 @@ dependencies = [
 
 [[package]]
 name = "ezmi2d-python"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ezmi2d-core",
  "pyo3",

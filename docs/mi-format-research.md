@@ -1,6 +1,6 @@
 # MI / BI 形式調査
 
-調査日: 2026-08-12
+調査日: 2026-08-17
 
 ## 結論
 
@@ -168,6 +168,19 @@ Phase 3 ではこの順序を Rust core に実装した。Python の `read()` / 
 
 PTC は `.bi` を **Compressed MI**、圧縮方式を **Z-lib mechanism** と説明している。現行 Creo Parametric は `.bi` を読み込める一方、Drafting 付属の MI↔DXF/DWG translator は compressed MI を受け付けない。
 
+拡張子ではなく content signature を先に判定する。現在の実装境界は次の通りである。
+
+| signature | 分類 | 現在の処理 |
+|---|---|---|
+| MI section marker (`#~`) | text MI | 対応 |
+| `1f 8b` | gzip | 単一 member のみ対応し、展開結果が MI text であることも検証 |
+| RFC 1950 の有効な CMF/FLG | zlib wrapper | 候補として識別し、未対応エラー |
+| `PK 03 04`, `PK 05 06`, `PK 07 08` | ZIP | 候補として識別し、未対応エラー |
+| `1f 9d` | UNIX `compress` | 候補として識別し、未対応エラー |
+| `1f 1e` | UNIX `pack` | 候補として識別し、未対応エラー |
+
+この判定は wrapper の識別であって、それ自体を Drafting の `.bi` と認定するものではない。
+
 Phase 4 では PTC Community に公開された、投稿者が Creo 18.1 で作成したと説明する bundle を取得した。その 2D member は `am_2d_0.mi` という名前だが、内容は次の gzip stream である。
 
 | 項目 | 検証値 |
@@ -187,7 +200,7 @@ Rust core は magic に基づき単一 gzip member を streaming 展開し、そ
 - `max_compression_ratio`: 展開後 / コンテナの最大比率
 - gzip checksum / truncation error、trailing data、連結 member を拒否
 
-Phase 4 時点では、実製品データの圧縮入力と展開結果について論理 bytes、global metadata、25 parts、4,499 addressable entities、128 graphic entities、35 texts、semantic diagnostics が一致した。Phase 5 の decoder 拡張後も同値性は維持され、typed graphic は 216 件（うち `BSPL` 88 件）、typed annotation は 88 件になった。合成 gzip は container mechanics と異常系テストにだけ使い、形式同定の根拠にはしていない。
+Phase 4 時点では、実製品データの圧縮入力と展開結果について論理 bytes、global metadata、25 parts、4,499 addressable entities、128 graphic entities、35 texts、semantic diagnostics が一致した。その後の decoder 拡張でも同値性を維持し、現在は typed graphic 1,261 件（`LIN` 853、`ARC` 187、`BSPL` 88、`CIR` 76、`TEX` 57）、typed annotation 88 件、`COC` 11 件、`PFA` 9 件になった。合成 gzip は container mechanics と異常系テストにだけ使い、形式同定の根拠にはしていない。
 
 ### 5.1 Phase 5 semantic expansion
 
@@ -196,13 +209,15 @@ Phase 5 では、正式な field 名が得られていない部分を raw bytes 
 - legacy `FIL` 353 件は `ARC` と同じ中心・始点・終点・向きの layout として解釈し、対応 DXF の追加 `ARC` 353 件と multiset が全件一致した。
 - `BSPL` は entity ID 後の可変 prefix を走査し、order、2 個の未命名 definition value、parameter maximum、始点・終点、control point IDs、knot vector、補間 sample の自己整合する唯一の layout を選ぶ。legacy 6 件と MI 3.40 の 88 件すべてで layout は一意だった。
 - legacy `BSPL` の保存 sample 36 点は De Boor 評価と最大約 `6.4e-14` で一致し、対応 DXF の `POLYLINE` 全頂点も最大約 `1.5e-13` で曲線上に一致した。
-- section 72 の `DANG` / `DCHMF` / `DDIA` / `DRAD` / `DSGL`、section 42 の `DTV`、`LED`、`HAT`、`SYML` を record family ごとの型にした。位置依存 field は `values` と元 `RawRecord` で保持し、未検証の意味名を付けていない。
+- section 72 の `DANG` / `DCHMF` / `DDIA` / `DRAD` / `DSGL` は可変 property prefix を基準に、参照 geometry、参照点、text position、measurement、formatted text、DDA/DTF style、DTV pointer を復元した。46 件すべてで geometry と point pointer が解決した。残る位置依存 field は `values` と元 `RawRecord` で保持する。
+- `DTV` は上下値・上下表示文字・DTF style・alignment、`LED` は graphic header・arrow code/size・3D source point 列、`SYML` は 3 個の graphic pointer を公開した。製品 corpus では LED 7 件は各 2 点、SYML 16 件は全 48 pointer が `LIN` に解決した。
+- `HAT` の reference point・angle・spacing と `HAPP` の offset/distance/angle/color/linetype sub-pattern を復元した。`PFA` が outer/inner `COC` を HAT へ関連付け、COC が境界 component を source order で保持する。9 HAT は全件 boundary に解決し、1 件が outer 1 + inner 2 loops を持つ。COC component 147 件中 146 件は typed graphic、1 件は未対応 `PLN` なので raw ID と `None` を残す。
 - `ASSE` の可変 property prefix、子 assembly ID、member IDs、serialized 3x3 transform、part 対応を復元した。製品サンプルの 25 parts / 24 instances は単一 root に解決され、`DOCU_SHEET` association から sheet part 1 件を同定した。
 - 自作 fixture は root → 2 sheets → shared leaf という構造を持ち、nested/shared part、異なる instance transform、multiple sheets を regression test にする。
 
 各 Phase 5 record family には正常 fixture と短縮・破損 fixture があり、破損時も `UnsupportedEntity.raw_record` から payload を取得できる。つまり typed decoder の失敗によって addressable record を黙って捨てない。
 
-このサンプルは bundle 内の製品生成圧縮 MI であり、別名保存した standalone `.bi` ではない。したがって現実装が保証する範囲は **gzip magic を持ち、展開後が MI text である入力** である。zlib wrapper と ZIP signature は検出して unsupported error にし、古い UNIX compress 等の世代差も未対応とする。同一図面を Drafting から standalone `.mi` / `.bi` へ保存する相互運用試験は引き続き必要である。
+このサンプルは bundle 内の製品生成圧縮 MI であり、別名保存した standalone `.bi` ではない。したがって現実装が保証する範囲は **gzip magic を持ち、展開後が MI text である入力** である。zlib wrapper、ZIP、UNIX `compress`、UNIX `pack` は signature を検出して unsupported error にし、未検証 decoder へフォールバックしない。同一図面を Drafting から standalone `.mi` / `.bi` へ保存する相互運用試験は引き続き必要である。
 
 ## 6. 取得したサンプル corpus
 
@@ -259,12 +274,12 @@ Phase 3 では、宣言のない全 19 件を既知文字 field から Shift_JIS
 - global section の drawing extents と DXF `$EXTMIN` / `$EXTMAX` が全件一致。
 
 これは取得 corpus に対する positional layout の強い裏付けだが、MI Interface Reference
-の代用ではない。Phase 5 では `FIL` と `BSPL` を上記の検証済み範囲で typed 化した。`TEX` は全 57 件で共通する
-30 field layout のうち、共通表示値、property pointer、fields 8..16 の 3x3 serialized
-transform、その translation entries、field 19 の font name、fields 22..23 の size、
-field 28 の content のみ typed API にした。他の field は speculative name を付けず、
-`Text.values` と元 `RawRecord` へ残している。回転、alignment、複数行、symbol escape は
-この corpus だけでは検証できていない。
+の代用ではない。`FIL` と `BSPL` は上記の検証済み範囲で typed 化した。legacy `TEX` 57 件と
+modern product `TEX` 57 件の可変 property prefix／line count を照合し、3x3 transform、
+translation、rotation、width factor、mirror、alignment、primary/alternate font、size、
+line spacing、複数行 content を公開した。legacy では transform は全件 identity であり、
+modern 側の 2 件が +90 度回転、複数行 record も存在する。未命名 field は `Text.values` と
+元 `RawRecord` に残す。
 
 ### 6.2 PTC Community Creo bundle
 
@@ -275,7 +290,7 @@ Attachment SHA-256: e1e5ee6c0c63dab1bba8dcf7780645398da70c59a230a41ac20c363e3a64
 Bundle SHA-256:     63b2952002451d0693b9db56e466dce1f09810528d92c7e28722afcf422a7b0d
 ```
 
-MI 3.40 / UTF-8、複数 part、dimension 系を含むため、modern product fixture として使える。Phase 5 では 88 `BSPL`、46 dimension、10 `DTV`、7 `LED`、9 `HAT`、16 `SYML` と 25-part hierarchy を typed 化した。一方、modern `LIN` / `ARC` / `CIR` / 一部 `TEX` 等の version-specific layout は未対応であり、semantic diagnostic は残る。圧縮／展開入力で完全一致することを検証しているが、既知 subset 以上を decode 済みとは解釈しない。
+MI 3.40 / UTF-8、複数 part、dimension 系を含むため、modern product fixture として使える。現在は 853 `LIN`、187 `ARC`、88 `BSPL`、76 `CIR`、57 `TEX`、46 dimension、10 `DTV`、7 `LED`、9 `HAT`、16 `SYML` と 25-part hierarchy を typed 化した。さらに 11 `COC` と 9 `PFA` で hatch boundary を復元する。未対応は `CENL` 24、`ATNS` 3、`RTL` 3、`PMA` 3、`PLN` 1 で raw fallback を維持する。圧縮／展開入力で完全一致することを検証しているが、既知 layout 以上を decode 済みとは解釈しない。
 
 ### 6.3 権利上の扱い
 
@@ -309,7 +324,7 @@ PTC の 2D Access manual は、インストール物に tutorial 用 `example.mi
 | modern text MI | MI 3.20 以上、`#~1`、UTF-8、日本語と欧文 | 製品生成 MI 3.40 を 1 件取得。文字種 coverage は未監査 |
 | compressed MI | 同一論理図面の圧縮／展開 pair | bundle 内の製品生成 gzip member を取得・照合済み。standalone `.bi` pair は未取得 |
 | geometry coverage | legacy `FIL` 353、legacy `BSPL` 6、modern `BSPL` 88 を取得・typed 検証済み。composite / construction geometry は未対応 |
-| structure coverage | 製品 sample の nested/shared/transformed 25-part tree を取得。multiple-sheet は自作 fixture で検証 |
+| structure coverage | 製品 sample の nested/shared 25-part tree を取得したが、24 transform は全件 identity。non-identity translation と multiple-sheet は自作 fixture で検証 |
 | annotation coverage | angular/radial/diameter/single/chamfer dimension、DTV、leader、hatch、symbol を製品 sample で取得。全 variant と field semantics は未確定 |
 | document coverage | 製品 sample の 1 sheet / views と、自作 fixture の 2 sheets を検証。embedded font は未取得 |
 | malformed corpus | broken pointer、wrong type、duplicate ID、non-finite coordinate、invalid text byte、missing `|~` / `##~~`、truncation | 最小 fixture を自作済み |
@@ -339,6 +354,7 @@ PTC 環境を利用できる場合は、同じ小図面を MI 3.20、最新 MI�
 - [PTC: Limitations for loading pre-2.90 files](https://support.ptc.com/help/creo/ced_drafting/r20.8.0.0/en/ced_drafting/user_classic/Limitations_2.html)
 - [PTC: Opening a Drawing File](https://support.ptc.com/help/creo/ced_drafting/r20.8.0.0/en/ced_drafting/user_fluentui/Opening_a_Drawing_File_Using_the_Drafting_File_Browser.html)
 - [PTC: Saving a Drawing File](https://support.ptc.com/help/creo/ced_drafting/r20.8.0.0/en/ced_drafting/user_win/Saving_a_Drawing_File_via_the_Drafting_File_Browser.html)
+- [PTC: Setting Hatch Patterns](https://support.ptc.com/help/creo/ced_drafting/r20.8.0.0/en/ced_drafting/user_fluentui/Setting_Hatch_Patterns.html)
 - [PTC: Importing Creo Elements/Direct Drawing Files](https://support.ptc.com/help/creo/creo_pma/r12/usascii/data_exchange/interface/About_Importing_CED_MI_Drawings_to_Creo.html)
 - [PTC: MI to DXF/DWG translator limitations](https://support.ptc.com/help/creo/ced_drafting/r20.8.0.0/de/ced_drafting/dxftrans/Hints_and_Tips_for_Translating_MI_to_DXF_DWG.html)
 - [PTC: 2D Access manual (Unicode and `example.mi`)](https://support.ptc.com/help/creo/ced_drafting/r20.6.0.0/de/ced_drafting/baggage/2d_access_win.pdf)

@@ -56,6 +56,12 @@ pub(crate) fn detect_compression(data: &[u8]) -> Option<CompressionKind> {
     if data.starts_with(&[0x1f, 0x8b]) {
         return Some(CompressionKind::Gzip);
     }
+    if data.starts_with(&[0x1f, 0x9d]) {
+        return Some(CompressionKind::UnixCompress);
+    }
+    if data.starts_with(&[0x1f, 0x1e]) {
+        return Some(CompressionKind::UnixPack);
+    }
     if data.starts_with(b"PK\x03\x04")
         || data.starts_with(b"PK\x05\x06")
         || data.starts_with(b"PK\x07\x08")

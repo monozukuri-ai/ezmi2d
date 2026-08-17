@@ -81,13 +81,18 @@ def test_gzip_container_is_decoded_without_losing_either_byte_stream() -> None:
 
 
 def test_unverified_compression_families_remain_unsupported() -> None:
-    zlib_candidate = bytes.fromhex("789c0300")
-    info = ezmi2d.detect_format(zlib_candidate)
-
-    assert info.kind == "compressed_candidate"
-    assert info.compression == "zlib"
-    with pytest.raises(ezmi2d.UnsupportedMiError, match="not supported"):
-        ezmi2d.scan(zlib_candidate)
+    candidates = {
+        "zlib": bytes.fromhex("789c0300"),
+        "zip": bytes.fromhex("504b03040000"),
+        "unix_compress": bytes.fromhex("1f9d9000"),
+        "unix_pack": bytes.fromhex("1f1e0000"),
+    }
+    for compression, candidate in candidates.items():
+        info = ezmi2d.detect_format(candidate)
+        assert info.kind == "compressed_candidate"
+        assert info.compression == compression
+        with pytest.raises(ezmi2d.UnsupportedMiError, match=compression):
+            ezmi2d.scan(candidate)
 
 
 def test_gzip_limits_and_stream_integrity_are_enforced() -> None:

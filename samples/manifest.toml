@@ -1,5 +1,5 @@
 schema_version = 1
-last_verified = "2026-08-12"
+last_verified = "2026-08-17"
 
 [[corpus]]
 id = "takahiro-soarerdex-me10-v2.10"
@@ -46,6 +46,7 @@ remaining_raw_entity_types = ["FIL", "BSPL"]
 typed_fillets = 353
 typed_bsplines = 6
 bspline_interpolation_samples = 36
+arc_direction = "ARC 1059 and FIL 353: every raw orientation is 0 and every ccw is true"
 remaining_raw_entity_types = []
 paired_dxf_fillets = "all FIL center/start/end tuples equal the additional DXF ARC multiset"
 paired_dxf_bsplines = "all corresponding DXF POLYLINE vertices lie on the decoded B-splines within 1e-8"
@@ -109,3 +110,51 @@ assembly_instance_count = 24
 root_part_count = 1
 sheet_part_count = 1
 equivalence = "compressed and expanded inputs retain identical Phase 5 geometry, annotations, hierarchy, and diagnostics"
+
+[corpus.p1_validation]
+graphic_entity_count = 1261
+line_count = 853
+arc_count = 187
+bspline_count = 88
+circle_count = 76
+text_count = 57
+dimension_count = 46
+resolved_dimension_geometry_references = "all"
+resolved_dimension_point_references = "all"
+linked_dimension_tolerances = 10
+leader_count = 7
+leader_vertex_count = 14
+hatch_count = 9
+contour_count = 11
+hatch_association_count = 9
+symbol_count = 16
+resolved_symbol_components = 48
+remaining_unsupported_types = ["CENL:24", "ATNS:3", "RTL:3", "PMA:3", "PLN:1"]
+equivalence = "compressed and expanded inputs retain identical typed styles, text transforms, dimension semantics, hatch boundaries, and component references"
+
+[[required_corpus]]
+id = "standalone-bi-generation-matrix"
+status = "blocking public standalone .bi compatibility claim"
+purpose = "Determine generation-specific compressed MI wrappers and verify exact logical MI equivalence"
+producer_generations = [
+  "HP ME10 legacy generation",
+  "CoCreate or OneSpace Designer Drafting generation",
+  "Creo Elements/Direct Drafting current generation",
+]
+required_artifacts = [
+  "same drawing saved separately as standalone .mi and .bi",
+  "producer product name, exact version, platform, and save options",
+  "container and logical SHA-256 plus byte sizes",
+  "content signature and decompressor identity",
+  "Japanese text, dimensions, tolerance, hatch, and nested/shared parts",
+]
+required_validation = [
+  "signature classification before decompression",
+  "logical MI byte equivalence or documented canonical differences",
+  "semantic model equivalence between .mi and .bi",
+  "decompressed-size and compression-ratio limits",
+  "truncation, checksum, trailing-data, and multi-stream behavior",
+]
+provenance_requirement = "Record source URL or custodian, acquisition date, and producer evidence"
+license_requirement = "Record license and explicit redistribution permission separately for every artifact"
+repository_policy = "metadata and checksums only; binaries stay under gitignored samples/external unless redistribution is explicitly permitted"

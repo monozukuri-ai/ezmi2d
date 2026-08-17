@@ -3,9 +3,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::model::{
     ArcEntity, AssemblyEntity, AssemblyInstance, BSplineEntity, BSplineSample, Bounds2,
-    CircleEntity, EncodingInfo, EntityHeader, EntityId, GlobalInfo, GraphicHeader, LineEntity,
-    Part, Point2, PointEntity, PropertyEntity, SemanticDocument, SemanticEntity, StructuredEntity,
-    TextEntity, TextValue, UnsupportedEntity,
+    CircleEntity, ContourEntity, DimensionEntity, DimensionTextAttributeProperty,
+    DimensionToleranceEntity, EncodingInfo, EntityHeader, EntityId, GlobalInfo, GraphicHeader,
+    HatchAssociationEntity, HatchEntity, HatchPatternLine, HatchPatternProperty, LeaderEntity,
+    LeaderPoint, LineEntity, Part, PartStatusProperty, Point2, PointEntity, PropertyEntity,
+    SemanticDocument, SemanticEntity, SymbolEntity, TextEntity, TextValue, UnsupportedEntity,
 };
 use crate::{
     scan_input, Diagnostic, DiagnosticSeverity, EncodingSource, MiError, RawDocument, RawRecord,
@@ -705,29 +707,37 @@ fn parse_entity(
             encoding,
             diagnostics,
         ),
-        "PSTAT" | "ASSP" | "DTA" | "DTF" | "DLA" | "DDA" | "DAF" | "HAPP" => {
-            parse_property(fields, header.clone(), mi_type)
-        }
-        "DTV" => parse_structured(fields, header.clone(), mi_type, 10)
-            .map(SemanticEntity::DimensionTolerance),
-        "LED" => parse_structured(fields, header.clone(), mi_type, 18).map(SemanticEntity::Leader),
-        "HAT" => parse_structured(fields, header.clone(), mi_type, 12).map(SemanticEntity::Hatch),
-        "SYML" => parse_structured(fields, header.clone(), mi_type, 5).map(SemanticEntity::Symbol),
-        "DANG" => {
-            parse_structured(fields, header.clone(), mi_type, 75).map(SemanticEntity::Dimension)
-        }
-        "DCHMF" => {
-            parse_structured(fields, header.clone(), mi_type, 63).map(SemanticEntity::Dimension)
-        }
-        "DDIA" => {
-            parse_structured(fields, header.clone(), mi_type, 64).map(SemanticEntity::Dimension)
-        }
-        "DRAD" => {
-            parse_structured(fields, header.clone(), mi_type, 56).map(SemanticEntity::Dimension)
-        }
-        "DSGL" => {
-            parse_structured(fields, header.clone(), mi_type, 73).map(SemanticEntity::Dimension)
-        }
+        "PSTAT" | "ASSP" | "DTA" | "DTF" | "DLA" | "DDA" | "DAF" | "HAPP" => parse_property(
+            data,
+            fields,
+            header.clone(),
+            mi_type,
+            record.payload_span.start_line + type_index,
+            encoding,
+            diagnostics,
+        ),
+        "DTV" => parse_dimension_tolerance(
+            data,
+            fields,
+            header.clone(),
+            record.payload_span.start_line + type_index,
+            encoding,
+            diagnostics,
+        ),
+        "LED" => parse_leader(fields, header.clone()),
+        "COC" => parse_contour(fields, header.clone()),
+        "HAT" => parse_hatch(fields, header.clone()),
+        "PFA" => parse_hatch_association(fields, header.clone()),
+        "SYML" => parse_symbol(fields, header.clone()),
+        "DANG" | "DCHMF" | "DDIA" | "DRAD" | "DSGL" => parse_dimension(
+            data,
+            fields,
+            header.clone(),
+            mi_type,
+            record.payload_span.start_line + type_index,
+            encoding,
+            diagnostics,
+        ),
         "ASSE" => parse_assembly(
             data,
             fields,
@@ -778,30 +788,489 @@ fn parse_point(fields: &[&[u8]], entity: EntityHeader) -> Result<SemanticEntity,
 }
 
 fn parse_property(
+    data: &[u8],
     fields: &[&[u8]],
     entity: EntityHeader,
     mi_type: &str,
+    start_line: usize,
+    encoding: &EncodingInfo,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<SemanticEntity, String> {
     require_fields(fields, 4, mi_type)?;
+    let part_status = if mi_type == "PSTAT" {
+        if fields.len() != 4 {
+            return Err(format!("PSTAT has {} fields; expected 4", fields.len()));
+        }
+        Some(PartStatusProperty {
+            shared: required_bool(fields, 2, "part shared status")?,
+            scale_modifiable: required_bool(fields, 3, "part scale-modifiable status")?,
+        })
+    } else {
+        None
+    };
+    let associated_strings = if mi_type == "ASSP" {
+        let count = required_usize(fields, 2, "associated string count")?;
+        if fields.len() != count + 3 {
+            return Err(format!(
+                "ASSP declares {count} strings but has {} value fields",
+                fields.len().saturating_sub(3)
+            ));
+        }
+        Some(
+            (0..count)
+                .map(|offset| {
+                    decoded_text_field(
+                        data,
+                        fields,
+                        3 + offset,
+                        start_line,
+                        encoding,
+                        diagnostics,
+                        "associated property string",
+                    )
+                    .expect("ASSP field count was checked")
+                })
+                .collect(),
+        )
+    } else {
+        None
+    };
+    let dimension_text_attribute = if mi_type == "DTA" {
+        let count = required_usize(fields, 2, "DTA value count")?;
+        if count < 3 || fields.len() != count + 3 {
+            return Err(format!(
+                "DTA declares {count} values but has {} value fields; at least three fonts are required",
+                fields.len().saturating_sub(3)
+            ));
+        }
+        Some(DimensionTextAttributeProperty {
+            font_name: decoded_text_field(
+                data,
+                fields,
+                3,
+                start_line,
+                encoding,
+                diagnostics,
+                "DTA primary font",
+            )
+            .expect("DTA field count was checked"),
+            alternate_font_name: decoded_text_field(
+                data,
+                fields,
+                4,
+                start_line,
+                encoding,
+                diagnostics,
+                "DTA alternate font",
+            )
+            .expect("DTA field count was checked"),
+            symbol_font_name: decoded_text_field(
+                data,
+                fields,
+                5,
+                start_line,
+                encoding,
+                diagnostics,
+                "DTA symbol font",
+            )
+            .expect("DTA field count was checked"),
+            definition_values: (6..fields.len())
+                .map(|index| required_f64(fields, index, "DTA numeric definition"))
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    } else {
+        None
+    };
+    let integer_definition = if matches!(mi_type, "DTF" | "DDA") {
+        let count = required_usize(fields, 2, "property value count")?;
+        if fields.len() != count + 3 {
+            return Err(format!(
+                "{mi_type} declares {count} values but has {} value fields",
+                fields.len().saturating_sub(3)
+            ));
+        }
+        Some(
+            (3..fields.len())
+                .map(|index| required_i64(fields, index, "integer property definition"))
+                .collect::<Result<Vec<_>, _>>()?,
+        )
+    } else {
+        None
+    };
+    let numeric_definition = if matches!(mi_type, "DLA" | "DAF") {
+        let count = required_usize(fields, 2, "property value count")?;
+        if fields.len() != count + 3 {
+            return Err(format!(
+                "{mi_type} declares {count} values but has {} value fields",
+                fields.len().saturating_sub(3)
+            ));
+        }
+        Some(
+            (3..fields.len())
+                .map(|index| required_f64(fields, index, "numeric property definition"))
+                .collect::<Result<Vec<_>, _>>()?,
+        )
+    } else {
+        None
+    };
+    let hatch_pattern = if mi_type == "HAPP" {
+        let count = required_usize(fields, 2, "hatch pattern line count")?;
+        let expected = 3usize
+            .checked_add(
+                count
+                    .checked_mul(5)
+                    .ok_or_else(|| "hatch pattern line count overflows".to_owned())?,
+            )
+            .ok_or_else(|| "hatch pattern field count overflows".to_owned())?;
+        if fields.len() != expected {
+            return Err(format!(
+                "HAPP declares {count} lines but has {} pattern fields",
+                fields.len().saturating_sub(3)
+            ));
+        }
+        let mut lines = Vec::with_capacity(count);
+        for offset in 0..count {
+            let start = 3 + offset * 5;
+            lines.push(HatchPatternLine {
+                offset: required_f64(fields, start, "hatch pattern offset")?,
+                distance: required_f64(fields, start + 1, "hatch pattern distance")?,
+                angle: required_f64(fields, start + 2, "hatch pattern angle")?,
+                color: required_i64(fields, start + 3, "hatch pattern color")?,
+                linetype: required_i64(fields, start + 4, "hatch pattern linetype")?,
+            });
+        }
+        Some(HatchPatternProperty { lines })
+    } else {
+        None
+    };
     Ok(SemanticEntity::Property(PropertyEntity {
         entity,
         mi_type: mi_type.to_owned(),
         values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
+        part_status,
+        associated_strings,
+        dimension_text_attribute,
+        integer_definition,
+        numeric_definition,
+        hatch_pattern,
     }))
 }
 
-fn parse_structured(
+fn parse_dimension_tolerance(
+    data: &[u8],
+    fields: &[&[u8]],
+    entity: EntityHeader,
+    start_line: usize,
+    encoding: &EncodingInfo,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<SemanticEntity, String> {
+    if fields.len() != 10 {
+        return Err(format!("DTV has {} fields; expected 10", fields.len()));
+    }
+    let alignment = required_usize(fields, 9, "tolerance text alignment")?;
+    if !(1..=9).contains(&alignment) {
+        return Err(format!(
+            "tolerance text alignment {alignment} is outside 1 through 9"
+        ));
+    }
+    Ok(SemanticEntity::DimensionTolerance(
+        DimensionToleranceEntity {
+            entity,
+            definition_value: required_i64(fields, 2, "tolerance definition")?,
+            upper_value: required_f64(fields, 3, "upper tolerance value")?,
+            lower_value: required_f64(fields, 4, "lower tolerance value")?,
+            format_value: required_i64(fields, 5, "tolerance format")?,
+            upper_text: decoded_text_field(
+                data,
+                fields,
+                6,
+                start_line,
+                encoding,
+                diagnostics,
+                "DTV upper text",
+            )
+            .expect("DTV field count was checked"),
+            lower_text: decoded_text_field(
+                data,
+                fields,
+                7,
+                start_line,
+                encoding,
+                diagnostics,
+                "DTV lower text",
+            )
+            .expect("DTV field count was checked"),
+            text_style_id: required_u64(fields, 8, "tolerance text style pointer")?,
+            alignment,
+            values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
+        },
+    ))
+}
+
+fn graphic_layout_candidates(fields: &[&[u8]]) -> Vec<usize> {
+    let mut candidates = Vec::new();
+    if let Some(count) = fields.get(5).and_then(|field| parse_usize(field)) {
+        if let Some(end) = 6usize.checked_add(count) {
+            candidates.push(end);
+        }
+    }
+    if let Some(count) = fields.get(6).and_then(|field| parse_usize(field)) {
+        if let Some(end) = 7usize.checked_add(count) {
+            if !candidates.contains(&end) {
+                candidates.push(end);
+            }
+        }
+    }
+    candidates
+}
+
+fn parse_leader(fields: &[&[u8]], entity: EntityHeader) -> Result<SemanticEntity, String> {
+    let layouts = graphic_layout_candidates(fields)
+        .into_iter()
+        .filter_map(|content_start| {
+            let point_count = fields
+                .get(content_start + 2)
+                .and_then(|field| parse_usize(field))?;
+            let expected = content_start
+                .checked_add(3)?
+                .checked_add(point_count.checked_mul(3)?)?;
+            (point_count > 0 && expected == fields.len()).then_some((content_start, point_count))
+        })
+        .collect::<Vec<_>>();
+    let [(content_start, point_count)] = layouts.as_slice() else {
+        return Err(format!(
+            "LED has {} matching point layouts; expected exactly one",
+            layouts.len()
+        ));
+    };
+    let content_start = *content_start;
+    let point_count = *point_count;
+    let arrow_size = required_f64(fields, content_start + 1, "leader arrow size")?;
+    if arrow_size <= 0.0 {
+        return Err("leader arrow size must be positive".to_owned());
+    }
+    let points = (0..point_count)
+        .map(|offset| {
+            let start = content_start + 3 + offset * 3;
+            Ok(LeaderPoint {
+                location: Point2::new(
+                    required_f64(fields, start, "leader point x")?,
+                    required_f64(fields, start + 1, "leader point y")?,
+                ),
+                elevation: required_f64(fields, start + 2, "leader point elevation")?,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(SemanticEntity::Leader(LeaderEntity {
+        graphic: parse_graphic_header(fields, entity, content_start)?,
+        arrow_type: required_i64(fields, content_start, "leader arrow type")?,
+        arrow_size,
+        points,
+        values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
+    }))
+}
+
+fn parse_contour(fields: &[&[u8]], entity: EntityHeader) -> Result<SemanticEntity, String> {
+    let layouts = graphic_layout_candidates(fields)
+        .into_iter()
+        .filter_map(|content_start| {
+            let component_count = fields
+                .get(content_start + 2)
+                .and_then(|field| parse_usize(field))?;
+            let expected = content_start.checked_add(3)?.checked_add(component_count)?;
+            (component_count > 0 && expected == fields.len())
+                .then_some((content_start, component_count))
+        })
+        .collect::<Vec<_>>();
+    let [(content_start, component_count)] = layouts.as_slice() else {
+        return Err(format!(
+            "COC has {} matching component layouts; expected exactly one",
+            layouts.len()
+        ));
+    };
+    let content_start = *content_start;
+    let component_count = *component_count;
+    let component_ids = (0..component_count)
+        .map(|offset| {
+            required_u64(
+                fields,
+                content_start + 3 + offset,
+                "contour component pointer",
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(SemanticEntity::Contour(ContourEntity {
+        graphic: parse_graphic_header(fields, entity, content_start)?,
+        closed: required_bool(fields, content_start, "contour closed flag")?,
+        orientation: required_i64(fields, content_start + 1, "contour orientation")?,
+        component_ids,
+        values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
+    }))
+}
+
+fn parse_hatch(fields: &[&[u8]], entity: EntityHeader) -> Result<SemanticEntity, String> {
+    let layouts = graphic_layout_candidates(fields)
+        .into_iter()
+        .filter(|content_start| content_start.checked_add(4) == Some(fields.len()))
+        .collect::<Vec<_>>();
+    let [content_start] = layouts.as_slice() else {
+        return Err(format!(
+            "HAT has {} matching hatch layouts; expected exactly one",
+            layouts.len()
+        ));
+    };
+    let content_start = *content_start;
+    let spacing = required_f64(fields, content_start + 3, "hatch spacing")?;
+    if spacing <= 0.0 {
+        return Err("hatch spacing must be positive".to_owned());
+    }
+    Ok(SemanticEntity::Hatch(HatchEntity {
+        graphic: parse_graphic_header(fields, entity, content_start)?,
+        reference_point: Point2::new(
+            required_f64(fields, content_start, "hatch reference x")?,
+            required_f64(fields, content_start + 1, "hatch reference y")?,
+        ),
+        angle: required_f64(fields, content_start + 2, "hatch angle")?,
+        spacing,
+        boundary_loop_ids: Vec::new(),
+        values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
+    }))
+}
+
+fn parse_hatch_association(
+    fields: &[&[u8]],
+    entity: EntityHeader,
+) -> Result<SemanticEntity, String> {
+    require_fields(fields, 6, "PFA")?;
+    let property_count = required_usize(fields, 2, "PFA property count")?;
+    let content_start = 3usize
+        .checked_add(property_count)
+        .ok_or_else(|| "PFA property count overflows".to_owned())?;
+    require_fields(fields, content_start + 3, "PFA")?;
+    let inner_count = required_usize(fields, content_start + 2, "PFA inner loop count")?;
+    if fields.len() != content_start + 3 + inner_count {
+        return Err(format!(
+            "PFA declares {inner_count} inner loops but has {} loop fields",
+            fields.len().saturating_sub(content_start + 3)
+        ));
+    }
+    Ok(SemanticEntity::HatchAssociation(HatchAssociationEntity {
+        entity,
+        property_ids: (0..property_count)
+            .map(|offset| required_u64(fields, 3 + offset, "PFA property pointer"))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter(|id| *id != 0)
+            .collect(),
+        hatch_id: required_u64(fields, content_start, "PFA hatch pointer")?,
+        outer_loop_id: required_u64(fields, content_start + 1, "PFA outer loop pointer")?,
+        inner_loop_ids: (0..inner_count)
+            .map(|offset| {
+                required_u64(fields, content_start + 3 + offset, "PFA inner loop pointer")
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
+    }))
+}
+
+fn parse_symbol(fields: &[&[u8]], entity: EntityHeader) -> Result<SemanticEntity, String> {
+    if fields.len() != 5 {
+        return Err(format!("SYML has {} fields; expected 5", fields.len()));
+    }
+    Ok(SemanticEntity::Symbol(SymbolEntity {
+        entity,
+        component_ids: (2..5)
+            .map(|index| required_u64(fields, index, "symbol component pointer"))
+            .collect::<Result<Vec<_>, _>>()?,
+        values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
+    }))
+}
+
+fn parse_dimension(
+    data: &[u8],
     fields: &[&[u8]],
     entity: EntityHeader,
     mi_type: &str,
-    minimum_fields: usize,
-) -> Result<StructuredEntity, String> {
+    start_line: usize,
+    encoding: &EncodingInfo,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<SemanticEntity, String> {
+    let minimum_fields = match mi_type {
+        "DANG" => 75,
+        "DCHMF" => 63,
+        "DDIA" => 64,
+        "DRAD" => 56,
+        "DSGL" => 73,
+        _ => return Err(format!("unsupported dimension type {mi_type}")),
+    };
     require_fields(fields, minimum_fields, mi_type)?;
-    Ok(StructuredEntity {
+    let property_count = required_usize(fields, 2, "dimension property count")?;
+    let content_start = 3usize
+        .checked_add(property_count)
+        .ok_or_else(|| "dimension property count overflows".to_owned())?;
+    let property_ids = (0..property_count)
+        .map(|offset| required_u64(fields, 3 + offset, "dimension property pointer"))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|id| *id != 0)
+        .collect::<Vec<_>>();
+    let (geometry_offsets, point_offsets, position_offset, measurement_offset) = match mi_type {
+        "DANG" => (&[0usize, 2][..], &[1usize, 3][..], 5usize, 18usize),
+        "DCHMF" => (&[0usize, 2, 5][..], &[1usize, 3][..], 8usize, 21usize),
+        "DDIA" | "DRAD" => (&[0usize][..], &[][..], 2usize, 15usize),
+        "DSGL" => (&[0usize, 2][..], &[1usize, 3][..], 7usize, 20usize),
+        _ => unreachable!("dimension type was checked above"),
+    };
+    let measurement_index = content_start + measurement_offset;
+    require_fields(fields, measurement_index + 2, mi_type)?;
+    let style_id = required_u64(fields, measurement_index - 4, "dimension style pointer")?;
+    let text_style_id = required_u64(
+        fields,
+        measurement_index - 2,
+        "dimension text style pointer",
+    )?;
+    Ok(SemanticEntity::Dimension(DimensionEntity {
         entity,
         mi_type: mi_type.to_owned(),
+        property_ids,
+        reference_geometry_ids: geometry_offsets
+            .iter()
+            .map(|offset| {
+                required_u64(fields, content_start + offset, "dimension geometry pointer")
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        reference_point_ids: point_offsets
+            .iter()
+            .map(|offset| required_u64(fields, content_start + offset, "dimension point pointer"))
+            .collect::<Result<Vec<_>, _>>()?,
+        text_position: Point2::new(
+            required_f64(
+                fields,
+                content_start + position_offset,
+                "dimension text position x",
+            )?,
+            required_f64(
+                fields,
+                content_start + position_offset + 1,
+                "dimension text position y",
+            )?,
+        ),
+        measurement: required_f64(fields, measurement_index, "dimension measurement")?,
+        formatted_text: decoded_text_field(
+            data,
+            fields,
+            measurement_index + 1,
+            start_line,
+            encoding,
+            diagnostics,
+            &format!("{mi_type} formatted measurement"),
+        )
+        .expect("dimension field count was checked"),
+        dimension_style_id: (style_id != 0).then_some(style_id),
+        text_style_id: (text_style_id != 0).then_some(text_style_id),
+        tolerance_ids: Vec::new(),
         values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
-    })
+    }))
 }
 
 fn parse_assembly(
@@ -927,43 +1396,145 @@ fn parse_text(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<SemanticEntity, String> {
     require_fields(fields, 30, "TEX")?;
-    let transform_values = parse_f64_array::<9>(fields, 8, "text transform")?;
-    let size_values = parse_f64_array::<2>(fields, 22, "text size")?;
+    let mut layouts = Vec::new();
+    if let Some(property_count) = fields.get(5).and_then(|field| parse_usize(field)) {
+        if let Some(header_end) = 6usize.checked_add(property_count) {
+            if text_layout_matches(fields, header_end, false) {
+                layouts.push((header_end, false));
+            }
+        }
+    }
+    if let Some(property_count) = fields.get(6).and_then(|field| parse_usize(field)) {
+        if let Some(header_end) = 7usize.checked_add(property_count) {
+            if text_layout_matches(fields, header_end, true) {
+                layouts.push((header_end, true));
+            }
+        }
+    }
+    let [(header_end, modern)] = layouts.as_slice() else {
+        return Err(format!(
+            "TEX has {} matching text layouts; expected exactly one",
+            layouts.len()
+        ));
+    };
+    let header_end = *header_end;
+    let modern = *modern;
+    let alignment = required_usize(fields, header_end, "text alignment")?;
+    if !(1..=9).contains(&alignment) {
+        return Err(format!("text alignment {alignment} is outside 1 through 9"));
+    }
+    let transform_values = parse_f64_array::<9>(fields, header_end + 1, "text transform")?;
+    if !is_affine_3x3(&transform_values) {
+        return Err("text transform final row is not affine (0, 0, 1)".to_owned());
+    }
+    let font_index = header_end + 12;
+    let alternate_font_index = modern.then_some(header_end + 13);
+    let size_index = header_end + if modern { 16 } else { 15 };
+    let size_values = parse_f64_array::<2>(fields, size_index, "text size")?;
+    if size_values.iter().any(|value| *value <= 0.0) {
+        return Err("text size values must be positive".to_owned());
+    }
+    let line_spacing = required_f64(
+        fields,
+        header_end + if modern { 19 } else { 18 },
+        "text line spacing",
+    )?;
+    let line_count_index = header_end + if modern { 21 } else { 20 };
+    let line_count = required_usize(fields, line_count_index, "text line count")?;
+    let lines_start = line_count_index + 1;
     let id = entity.id;
+    let lines = (0..line_count)
+        .map(|offset| {
+            decoded_text_field(
+                data,
+                fields,
+                lines_start + offset * 2,
+                start_line,
+                encoding,
+                diagnostics,
+                &format!("TEX entity {id} line {offset}"),
+            )
+            .expect("text layout field count was checked")
+        })
+        .collect::<Vec<_>>();
+    let content = lines
+        .first()
+        .cloned()
+        .ok_or_else(|| "TEX contains no text lines".to_owned())?;
     Ok(SemanticEntity::Text(TextEntity {
-        graphic: parse_graphic_header(fields, entity)?,
+        graphic: parse_graphic_header(fields, entity, header_end)?,
+        alignment,
         transform_values,
         font_name: decoded_text_field(
             data,
             fields,
-            19,
+            font_index,
             start_line,
             encoding,
             diagnostics,
             &format!("TEX entity {id} font name"),
         )
         .expect("field count was checked"),
+        alternate_font_name: alternate_font_index.map(|index| {
+            decoded_text_field(
+                data,
+                fields,
+                index,
+                start_line,
+                encoding,
+                diagnostics,
+                &format!("TEX entity {id} alternate font name"),
+            )
+            .expect("field count was checked")
+        }),
         size_values,
-        content: decoded_text_field(
-            data,
-            fields,
-            28,
-            start_line,
-            encoding,
-            diagnostics,
-            &format!("TEX entity {id} content"),
-        )
-        .expect("field count was checked"),
+        line_spacing,
+        lines,
+        content,
         values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
     }))
 }
 
+fn text_layout_matches(fields: &[&[u8]], header_end: usize, modern: bool) -> bool {
+    let alignment = fields.get(header_end).and_then(|field| parse_usize(field));
+    if !alignment.is_some_and(|value| (1..=9).contains(&value)) {
+        return false;
+    }
+    let line_count_index = header_end + if modern { 21 } else { 20 };
+    let Some(line_count) = fields
+        .get(line_count_index)
+        .and_then(|field| parse_usize(field))
+    else {
+        return false;
+    };
+    let Some(expected_end) = line_count_index
+        .checked_add(1)
+        .and_then(|start| start.checked_add(line_count.checked_mul(2)?))
+    else {
+        return false;
+    };
+    if expected_end != fields.len() || line_count == 0 {
+        return false;
+    }
+    (0..line_count).all(|offset| {
+        fields
+            .get(line_count_index + 2 + offset * 2)
+            .and_then(|field| parse_i64(field))
+            == Some(0)
+    })
+}
+
+fn is_affine_3x3(values: &[f64; 9]) -> bool {
+    values[6].abs() <= 1e-12 && values[7].abs() <= 1e-12 && (values[8] - 1.0).abs() <= 1e-12
+}
+
 fn parse_line(fields: &[&[u8]], entity: EntityHeader) -> Result<SemanticEntity, String> {
     require_fields(fields, 9, "LIN")?;
+    let geometry_start = fields.len() - 2;
     Ok(SemanticEntity::Line(LineEntity {
-        graphic: parse_graphic_header(fields, entity)?,
-        start_id: required_u64(fields, 7, "start point")?,
-        end_id: required_u64(fields, 8, "end point")?,
+        graphic: parse_graphic_header(fields, entity, geometry_start)?,
+        start_id: required_u64(fields, geometry_start, "start point")?,
+        end_id: required_u64(fields, geometry_start + 1, "end point")?,
         start: None,
         end: None,
     }))
@@ -971,12 +1542,35 @@ fn parse_line(fields: &[&[u8]], entity: EntityHeader) -> Result<SemanticEntity, 
 
 fn parse_arc(fields: &[&[u8]], entity: EntityHeader) -> Result<SemanticEntity, String> {
     require_fields(fields, 11, "ARC")?;
+    let terminal_start = fields.len() - 4;
+    if terminal_start != 7 && terminal_start < 13 {
+        return Err(format!(
+            "ARC terminal layout starts at field {terminal_start}; expected legacy field 7 or a modern variable prefix"
+        ));
+    }
+    let graphic = if terminal_start == 7 {
+        Some(parse_graphic_header(
+            fields,
+            entity.clone(),
+            terminal_start,
+        )?)
+    } else {
+        // The terminal point/orientation tuple is independently verified for
+        // variable-prefix ARC records. Keep that geometry typed even when the
+        // prefix is not one of the verified graphic-header layouts.
+        parse_graphic_header(fields, entity.clone(), terminal_start).ok()
+    };
     Ok(SemanticEntity::Arc(ArcEntity {
-        graphic: parse_graphic_header(fields, entity)?,
-        center_id: required_u64(fields, 7, "center point")?,
-        start_id: required_u64(fields, 8, "start point")?,
-        end_id: required_u64(fields, 9, "end point")?,
-        orientation: required_i64(fields, 10, "orientation")?,
+        entity,
+        graphic,
+        prefix_values: fields[2..terminal_start]
+            .iter()
+            .map(|field| field.to_vec())
+            .collect(),
+        center_id: required_u64(fields, terminal_start, "center point")?,
+        start_id: required_u64(fields, terminal_start + 1, "start point")?,
+        end_id: required_u64(fields, terminal_start + 2, "end point")?,
+        orientation: required_i64(fields, terminal_start + 3, "orientation")?,
         center: None,
         start: None,
         end: None,
@@ -1053,9 +1647,7 @@ fn parse_bspline(fields: &[&[u8]], entity: EntityHeader) -> Result<SemanticEntit
     }
     debug_assert_eq!(cursor, fields.len());
 
-    let graphic = (layout_start == 7)
-        .then(|| parse_graphic_header(fields, entity.clone()))
-        .transpose()?;
+    let graphic = Some(parse_graphic_header(fields, entity.clone(), layout_start)?);
     Ok(SemanticEntity::BSpline(BSplineEntity {
         entity,
         graphic,
@@ -1068,6 +1660,10 @@ fn parse_bspline(fields: &[&[u8]], entity: EntityHeader) -> Result<SemanticEntit
             fields[layout_start + 1].to_vec(),
             fields[layout_start + 2].to_vec(),
         ],
+        closed: None,
+        periodic: None,
+        rational: None,
+        weights: None,
         parameter_max,
         start_id,
         end_id,
@@ -1136,26 +1732,74 @@ fn bspline_layout_end(fields: &[&[u8]], start: usize) -> Option<usize> {
 
 fn parse_circle(fields: &[&[u8]], entity: EntityHeader) -> Result<SemanticEntity, String> {
     require_fields(fields, 9, "CIR")?;
+    let geometry_start = fields.len() - 2;
     Ok(SemanticEntity::Circle(CircleEntity {
-        graphic: parse_graphic_header(fields, entity)?,
-        center_id: required_u64(fields, 7, "center point")?,
-        circumference_id: required_u64(fields, 8, "circumference point")?,
+        graphic: parse_graphic_header(fields, entity, geometry_start)?,
+        center_id: required_u64(fields, geometry_start, "center point")?,
+        circumference_id: required_u64(fields, geometry_start + 1, "circumference point")?,
         center: None,
         circumference: None,
     }))
 }
 
-fn parse_graphic_header(fields: &[&[u8]], entity: EntityHeader) -> Result<GraphicHeader, String> {
-    let property_value = required_u64(fields, 6, "property pointer")?;
+fn parse_graphic_header(
+    fields: &[&[u8]],
+    entity: EntityHeader,
+    content_start: usize,
+) -> Result<GraphicHeader, String> {
+    let legacy_count = fields
+        .get(5)
+        .and_then(|field| parse_usize(field))
+        .filter(|count| 6usize.checked_add(*count) == Some(content_start));
+    let modern_count = fields
+        .get(6)
+        .and_then(|field| parse_usize(field))
+        .filter(|count| 7usize.checked_add(*count) == Some(content_start));
+    let (display_values, visibility_value, property_start, property_count) =
+        match (legacy_count, modern_count) {
+            (Some(count), None) => (
+                Some([
+                    required_i64(fields, 2, "color")?,
+                    required_i64(fields, 3, "linetype")?,
+                    required_i64(fields, 4, "lineweight")?,
+                    i64::try_from(count)
+                        .map_err(|_| "property count does not fit i64".to_owned())?,
+                ]),
+                None,
+                6,
+                count,
+            ),
+            (None, Some(count)) => (
+                None,
+                Some(required_i64(fields, 5, "modern display value")?),
+                7,
+                count,
+            ),
+            (Some(_), Some(_)) => {
+                return Err("graphic header matches both legacy and modern layouts".to_owned());
+            }
+            (None, None) => {
+                return Err(format!(
+                    "graphic property list does not end at content field {content_start}"
+                ));
+            }
+        };
+    let property_ids = (0..property_count)
+        .map(|offset| required_u64(fields, property_start + offset, "property pointer"))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|property_id| *property_id != 0)
+        .collect::<Vec<_>>();
     Ok(GraphicHeader {
         entity,
-        display_values: [
-            required_i64(fields, 2, "display field 0")?,
-            required_i64(fields, 3, "display field 1")?,
-            required_i64(fields, 4, "display field 2")?,
-            required_i64(fields, 5, "display field 3")?,
-        ],
-        property_id: (property_value != 0).then_some(property_value),
+        display_values,
+        color: required_i64(fields, 2, "color")?,
+        linetype: required_i64(fields, 3, "linetype")?,
+        lineweight: required_f64(fields, 4, "lineweight")?,
+        visibility: None,
+        visibility_value,
+        property_id: property_ids.first().copied(),
+        property_ids,
     })
 }
 
@@ -1355,6 +1999,51 @@ fn resolve_references(
             matches!(entities[*index], SemanticEntity::Property(_)).then_some(*id)
         })
         .collect::<BTreeSet<_>>();
+    let graphic_ids = entity_index
+        .iter()
+        .filter_map(|(id, index)| {
+            matches!(
+                entities[*index],
+                SemanticEntity::Line(_)
+                    | SemanticEntity::Arc(_)
+                    | SemanticEntity::Fillet(_)
+                    | SemanticEntity::BSpline(_)
+                    | SemanticEntity::Circle(_)
+                    | SemanticEntity::Text(_)
+            )
+            .then_some(*id)
+        })
+        .collect::<BTreeSet<_>>();
+    let contour_ids = entity_index
+        .iter()
+        .filter_map(|(id, index)| {
+            matches!(entities[*index], SemanticEntity::Contour(_)).then_some(*id)
+        })
+        .collect::<BTreeSet<_>>();
+    let hatch_ids = entity_index
+        .iter()
+        .filter_map(|(id, index)| {
+            matches!(entities[*index], SemanticEntity::Hatch(_)).then_some(*id)
+        })
+        .collect::<BTreeSet<_>>();
+    let tolerance_ids = entity_index
+        .iter()
+        .filter_map(|(id, index)| {
+            matches!(entities[*index], SemanticEntity::DimensionTolerance(_)).then_some(*id)
+        })
+        .collect::<BTreeSet<_>>();
+    let hatch_boundaries = entities
+        .iter()
+        .filter_map(|entity| match entity {
+            SemanticEntity::HatchAssociation(association) => Some((
+                association.hatch_id,
+                std::iter::once(association.outer_loop_id)
+                    .chain(association.inner_loop_ids.iter().copied())
+                    .collect::<Vec<_>>(),
+            )),
+            _ => None,
+        })
+        .collect::<BTreeMap<_, _>>();
 
     for entity in entities {
         match entity {
@@ -1383,75 +2072,73 @@ fn resolve_references(
             }
             SemanticEntity::Arc(arc) => {
                 arc.center = resolve_point(
-                    arc.graphic.entity.id,
+                    arc.entity.id,
                     "center",
                     arc.center_id,
                     &points,
                     entity_index,
                     raw,
-                    arc.graphic.entity.raw_record_index,
+                    arc.entity.raw_record_index,
                     diagnostics,
                 );
                 arc.start = resolve_point(
-                    arc.graphic.entity.id,
+                    arc.entity.id,
                     "start",
                     arc.start_id,
                     &points,
                     entity_index,
                     raw,
-                    arc.graphic.entity.raw_record_index,
+                    arc.entity.raw_record_index,
                     diagnostics,
                 );
                 arc.end = resolve_point(
-                    arc.graphic.entity.id,
+                    arc.entity.id,
                     "end",
                     arc.end_id,
                     &points,
                     entity_index,
                     raw,
-                    arc.graphic.entity.raw_record_index,
+                    arc.entity.raw_record_index,
                     diagnostics,
                 );
-                validate_property(&arc.graphic, &property_ids, entity_index, raw, diagnostics);
+                if let Some(graphic) = &arc.graphic {
+                    validate_property(graphic, &property_ids, entity_index, raw, diagnostics);
+                }
             }
             SemanticEntity::Fillet(fillet) => {
                 fillet.center = resolve_point(
-                    fillet.graphic.entity.id,
+                    fillet.entity.id,
                     "center",
                     fillet.center_id,
                     &points,
                     entity_index,
                     raw,
-                    fillet.graphic.entity.raw_record_index,
+                    fillet.entity.raw_record_index,
                     diagnostics,
                 );
                 fillet.start = resolve_point(
-                    fillet.graphic.entity.id,
+                    fillet.entity.id,
                     "start",
                     fillet.start_id,
                     &points,
                     entity_index,
                     raw,
-                    fillet.graphic.entity.raw_record_index,
+                    fillet.entity.raw_record_index,
                     diagnostics,
                 );
                 fillet.end = resolve_point(
-                    fillet.graphic.entity.id,
+                    fillet.entity.id,
                     "end",
                     fillet.end_id,
                     &points,
                     entity_index,
                     raw,
-                    fillet.graphic.entity.raw_record_index,
+                    fillet.entity.raw_record_index,
                     diagnostics,
                 );
-                validate_property(
-                    &fillet.graphic,
-                    &property_ids,
-                    entity_index,
-                    raw,
-                    diagnostics,
-                );
+                if let Some(graphic) = &fillet.graphic {
+                    validate_property(graphic, &property_ids, entity_index, raw, diagnostics);
+                }
             }
             SemanticEntity::BSpline(spline) => {
                 spline.start = resolve_point(
@@ -1538,6 +2225,185 @@ fn resolve_references(
             SemanticEntity::Text(text) => {
                 validate_property(&text.graphic, &property_ids, entity_index, raw, diagnostics);
             }
+            SemanticEntity::Dimension(dimension) => {
+                for property_id in &dimension.property_ids {
+                    validate_property_pointer(
+                        dimension.entity.id,
+                        *property_id,
+                        dimension.entity.raw_record_index,
+                        &property_ids,
+                        entity_index,
+                        raw,
+                        diagnostics,
+                    );
+                }
+                for point_id in &dimension.reference_point_ids {
+                    let _ = resolve_point(
+                        dimension.entity.id,
+                        "dimension reference",
+                        *point_id,
+                        &points,
+                        entity_index,
+                        raw,
+                        dimension.entity.raw_record_index,
+                        diagnostics,
+                    );
+                }
+                for geometry_id in &dimension.reference_geometry_ids {
+                    validate_typed_reference(
+                        dimension.entity.id,
+                        "dimension geometry",
+                        *geometry_id,
+                        dimension.entity.raw_record_index,
+                        &graphic_ids,
+                        entity_index,
+                        raw,
+                        diagnostics,
+                    );
+                }
+                for style_id in [dimension.dimension_style_id, dimension.text_style_id]
+                    .into_iter()
+                    .flatten()
+                {
+                    validate_property_pointer(
+                        dimension.entity.id,
+                        style_id,
+                        dimension.entity.raw_record_index,
+                        &property_ids,
+                        entity_index,
+                        raw,
+                        diagnostics,
+                    );
+                }
+                dimension.tolerance_ids = dimension
+                    .values
+                    .iter()
+                    .filter_map(|value| parse_u64(value))
+                    .filter(|id| tolerance_ids.contains(id))
+                    .fold(Vec::new(), |mut result, id| {
+                        if !result.contains(&id) {
+                            result.push(id);
+                        }
+                        result
+                    });
+            }
+            SemanticEntity::DimensionTolerance(tolerance) => {
+                validate_property_pointer(
+                    tolerance.entity.id,
+                    tolerance.text_style_id,
+                    tolerance.entity.raw_record_index,
+                    &property_ids,
+                    entity_index,
+                    raw,
+                    diagnostics,
+                );
+            }
+            SemanticEntity::Leader(leader) => {
+                validate_property(
+                    &leader.graphic,
+                    &property_ids,
+                    entity_index,
+                    raw,
+                    diagnostics,
+                );
+            }
+            SemanticEntity::Contour(contour) => {
+                validate_property(
+                    &contour.graphic,
+                    &property_ids,
+                    entity_index,
+                    raw,
+                    diagnostics,
+                );
+                for component_id in &contour.component_ids {
+                    validate_typed_reference(
+                        contour.graphic.entity.id,
+                        "contour component",
+                        *component_id,
+                        contour.graphic.entity.raw_record_index,
+                        &graphic_ids,
+                        entity_index,
+                        raw,
+                        diagnostics,
+                    );
+                }
+            }
+            SemanticEntity::Hatch(hatch) => {
+                validate_property(
+                    &hatch.graphic,
+                    &property_ids,
+                    entity_index,
+                    raw,
+                    diagnostics,
+                );
+                hatch.boundary_loop_ids = hatch_boundaries
+                    .get(&hatch.graphic.entity.id)
+                    .cloned()
+                    .unwrap_or_default();
+                for loop_id in &hatch.boundary_loop_ids {
+                    validate_typed_reference(
+                        hatch.graphic.entity.id,
+                        "hatch boundary loop",
+                        *loop_id,
+                        hatch.graphic.entity.raw_record_index,
+                        &contour_ids,
+                        entity_index,
+                        raw,
+                        diagnostics,
+                    );
+                }
+            }
+            SemanticEntity::HatchAssociation(association) => {
+                for property_id in &association.property_ids {
+                    validate_property_pointer(
+                        association.entity.id,
+                        *property_id,
+                        association.entity.raw_record_index,
+                        &property_ids,
+                        entity_index,
+                        raw,
+                        diagnostics,
+                    );
+                }
+                validate_typed_reference(
+                    association.entity.id,
+                    "associated hatch",
+                    association.hatch_id,
+                    association.entity.raw_record_index,
+                    &hatch_ids,
+                    entity_index,
+                    raw,
+                    diagnostics,
+                );
+                for loop_id in std::iter::once(&association.outer_loop_id)
+                    .chain(association.inner_loop_ids.iter())
+                {
+                    validate_typed_reference(
+                        association.entity.id,
+                        "associated contour",
+                        *loop_id,
+                        association.entity.raw_record_index,
+                        &contour_ids,
+                        entity_index,
+                        raw,
+                        diagnostics,
+                    );
+                }
+            }
+            SemanticEntity::Symbol(symbol) => {
+                for component_id in &symbol.component_ids {
+                    validate_typed_reference(
+                        symbol.entity.id,
+                        "symbol component",
+                        *component_id,
+                        symbol.entity.raw_record_index,
+                        &graphic_ids,
+                        entity_index,
+                        raw,
+                        diagnostics,
+                    );
+                }
+            }
             SemanticEntity::Assembly(assembly) => {
                 for property_id in &assembly.property_ids {
                     validate_property_pointer(
@@ -1552,15 +2418,45 @@ fn resolve_references(
                 }
             }
             SemanticEntity::Point(_)
-            | SemanticEntity::Dimension(_)
-            | SemanticEntity::DimensionTolerance(_)
-            | SemanticEntity::Leader(_)
-            | SemanticEntity::Hatch(_)
-            | SemanticEntity::Symbol(_)
             | SemanticEntity::Property(_)
             | SemanticEntity::Unsupported(_) => {}
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_typed_reference(
+    owner_id: EntityId,
+    role: &str,
+    target_id: EntityId,
+    raw_record_index: usize,
+    expected_ids: &BTreeSet<EntityId>,
+    entity_index: &BTreeMap<EntityId, usize>,
+    raw: &RawDocument,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if expected_ids.contains(&target_id) {
+        return;
+    }
+    let record = &raw.records[raw_record_index];
+    let (code, message) = if entity_index.contains_key(&target_id) {
+        (
+            "MI_REFERENCE_TYPE_MISMATCH",
+            format!("entity {owner_id} {role} pointer {target_id} has the wrong entity type"),
+        )
+    } else {
+        (
+            "MI_DANGLING_ENTITY_REFERENCE",
+            format!("entity {owner_id} {role} pointer {target_id} does not exist"),
+        )
+    };
+    diagnostics.push(Diagnostic {
+        severity: DiagnosticSeverity::Warning,
+        code,
+        message,
+        span: record.payload_span,
+        action: Some("inspect the referenced entity ID and version-specific record layout"),
+    });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1606,18 +2502,17 @@ fn validate_property(
     raw: &RawDocument,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let Some(property_id) = graphic.property_id else {
-        return;
-    };
-    validate_property_pointer(
-        graphic.entity.id,
-        property_id,
-        graphic.entity.raw_record_index,
-        property_ids,
-        entity_index,
-        raw,
-        diagnostics,
-    );
+    for property_id in &graphic.property_ids {
+        validate_property_pointer(
+            graphic.entity.id,
+            *property_id,
+            graphic.entity.raw_record_index,
+            property_ids,
+            entity_index,
+            raw,
+            diagnostics,
+        );
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1682,7 +2577,10 @@ fn populate_parts(parts: &mut [Part], entities: &[SemanticEntity]) {
             | SemanticEntity::Hatch(_)
             | SemanticEntity::Symbol(_) => part.annotation_entity_ids.push(entity.id()),
             SemanticEntity::Unsupported(_) => part.unsupported_entity_ids.push(entity.id()),
-            SemanticEntity::Property(_) | SemanticEntity::Assembly(_) => {}
+            SemanticEntity::Contour(_)
+            | SemanticEntity::HatchAssociation(_)
+            | SemanticEntity::Property(_)
+            | SemanticEntity::Assembly(_) => {}
         }
     }
 }
@@ -1859,6 +2757,16 @@ fn required_i64(fields: &[&[u8]], index: usize, name: &str) -> Result<i64, Strin
         .get(index)
         .and_then(|field| parse_i64(field))
         .ok_or_else(|| format!("{name} at field {index} is not an integer"))
+}
+
+fn required_bool(fields: &[&[u8]], index: usize, name: &str) -> Result<bool, String> {
+    match required_i64(fields, index, name)? {
+        0 => Ok(false),
+        1 => Ok(true),
+        value => Err(format!(
+            "{name} at field {index} is {value}; expected 0 or 1"
+        )),
+    }
 }
 
 fn required_f64(fields: &[&[u8]], index: usize, name: &str) -> Result<f64, String> {

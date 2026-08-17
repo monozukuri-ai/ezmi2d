@@ -27,13 +27,19 @@ samples/external/ptc-community-mandrel/
 `ptc-community-mandrel` は公開 PTC Community 添付の Creo bundle から取得する。
 `compressed/am_2d_0.mi` は製品が bundle に格納した gzip 圧縮 MI、`mi/am_2d_0.mi` は
 その正確な展開結果である。前者は standalone `.bi` というファイル名ではないため、全世代の
-`.bi` が同じ wrapper だという証拠には使わない。Phase 4 では、この実データについて両入力の
-raw / semantic model が一致することを regression test にしている。Phase 5 ではさらに、
-88 `BSPL`、dimension / `DTV` / `LED` / `HAT` / `SYML`、25-part hierarchy、sheet association
-についても圧縮・展開結果が一致することを検証する。
+`.bi` が同じ wrapper だという証拠には使わない。この実データについて両入力の raw /
+semantic model が一致することを regression test にしている。現在は 1,261 typed graphics、
+dimension / `DTV` / `LED` / `HAT` / `SYML`、`COC` / `PFA` hatch boundaries、typed property
+tables、25-part hierarchy、sheet association まで圧縮・展開結果が一致することを検証する。
 
 外部ファイルは Git に含めない。どちらの corpus も再配布ライセンスを確認できていないため、
 利用時は各配布元の条件を確認すること。
+
+standalone `.bi` 対応を公開するための corpus はまだ揃っていない。最低でも複数の
+Drafting/ME10 世代について、同一図面を standalone `.mi` と `.bi` に保存した pair、producer
+version、content signature、checksum、取得元、利用・再配布条件を記録する。実ファイルは、
+明示的な再配布許諾がない限り `samples/external/` のみに置き、Git・wheel・sdist へ含めない。
+必要な世代・fixture・公開 claim の gate は `manifest.toml` の `required_corpus` に固定している。
 
 固定 URL、archive checksum、内容の検証結果は `manifest.toml`、形式調査は `../docs/mi-format-research.md` を参照する。
 

@@ -92,6 +92,17 @@ def test_declared_shift_jis_decodes_typed_text_without_replacement() -> None:
     assert text.font_name_bytes == b"hp_i3098_v"
     assert text.origin == ezmi2d.Vec2(25.0, 12.0)
     assert text.transform_values == (1.0, 0.0, 25.0, 0.0, 1.0, 12.0, 0.0, 0.0, 1.0)
+    assert text.transform == ezmi2d.Affine2D.identity().compose(
+        ezmi2d.Affine2D(a=1.0, b=0.0, c=0.0, d=1.0, tx=25.0, ty=12.0)
+    )
+    assert text.alignment == 4
+    assert text.horizontal_alignment == "left"
+    assert text.vertical_alignment == "middle"
+    assert text.rotation == 0.0
+    assert text.width_factor == 1.0
+    assert text.mirror is False
+    assert text.lines == ("ソアラーデックス",)
+    assert text.line_spacing == 1.5
     assert text.size_values == (3.5, 3.5)
     assert text.height == pytest.approx(3.5)
     assert text.property is document.get(2)

@@ -26,7 +26,7 @@ PathSource: TypeAlias = str | os.PathLike[str]
 BytesSource: TypeAlias = bytes | bytearray | memoryview
 MiSource: TypeAlias = PathSource | BytesSource
 FormatKind: TypeAlias = Literal["mi_text", "compressed_candidate"]
-CompressionKind: TypeAlias = Literal["zlib", "gzip", "zip"]
+CompressionKind: TypeAlias = Literal["zlib", "gzip", "zip", "unix_compress", "unix_pack"]
 LineEndingKind: TypeAlias = Literal["lf", "crlf", "cr", "none"]
 LineKind: TypeAlias = Literal[
     "blank", "data", "section_marker", "entity_terminator", "file_terminator"

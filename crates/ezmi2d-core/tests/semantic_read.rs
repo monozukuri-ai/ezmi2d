@@ -36,6 +36,8 @@ fn decodes_the_verified_legacy_geometry_subset() {
     assert_eq!(arc.radius(), Some(5.0));
     assert_eq!(arc.start_angle(), Some(0.0));
     assert_eq!(arc.end_angle(), Some(std::f64::consts::FRAC_PI_2));
+    assert_eq!(arc.ccw(), Some(true));
+    assert!(arc.graphic.is_some());
 
     let SemanticEntity::Circle(circle) = document.entity(12).unwrap() else {
         panic!("entity 12 is not a circle")
@@ -106,6 +108,10 @@ fn decodes_phase5_curves_annotations_and_part_structure() {
     assert_eq!(spline.order, 4);
     assert_eq!(spline.degree(), 3);
     assert_eq!(spline.parameter_domain(), Some((0.0, 1.0)));
+    assert_eq!(spline.closed, None);
+    assert_eq!(spline.periodic, None);
+    assert_eq!(spline.rational, None);
+    assert_eq!(spline.weights, None);
     assert_eq!(
         spline.evaluate(0.5),
         Some(ezmi2d_core::Point2::new(0.5, 0.75))
@@ -116,22 +122,45 @@ fn decodes_phase5_curves_annotations_and_part_structure() {
         document.entity(30),
         Some(SemanticEntity::DimensionTolerance(_))
     ));
-    assert!(matches!(
-        document.entity(31),
-        Some(SemanticEntity::Dimension(_))
-    ));
-    assert!(matches!(
-        document.entity(32),
-        Some(SemanticEntity::Leader(_))
-    ));
-    assert!(matches!(
-        document.entity(33),
-        Some(SemanticEntity::Hatch(_))
-    ));
-    assert!(matches!(
-        document.entity(34),
-        Some(SemanticEntity::Symbol(_))
-    ));
+    let SemanticEntity::Dimension(dimension) = document.entity(31).unwrap() else {
+        panic!("entity 31 is not a dimension")
+    };
+    assert_eq!(dimension.reference_geometry_ids, vec![20, 20]);
+    assert_eq!(dimension.reference_point_ids, vec![10, 11]);
+    assert_eq!(dimension.measurement, std::f64::consts::FRAC_PI_2);
+    assert_eq!(dimension.formatted_text.text.as_deref(), Some("90"));
+    let SemanticEntity::Leader(leader) = document.entity(32).unwrap() else {
+        panic!("entity 32 is not a leader")
+    };
+    assert_eq!(leader.points.len(), 2);
+    assert_eq!(
+        leader.points[1].location,
+        ezmi2d_core::Point2::new(1.0, 0.0)
+    );
+    let SemanticEntity::Hatch(hatch) = document.entity(33).unwrap() else {
+        panic!("entity 33 is not a hatch")
+    };
+    assert_eq!(hatch.boundary_loop_ids, vec![35]);
+    assert_eq!(hatch.spacing, 1.0);
+    let SemanticEntity::Symbol(symbol) = document.entity(34).unwrap() else {
+        panic!("entity 34 is not a symbol")
+    };
+    assert_eq!(symbol.component_ids, vec![20, 21, 20]);
+    let SemanticEntity::Contour(contour) = document.entity(35).unwrap() else {
+        panic!("entity 35 is not a contour")
+    };
+    assert!(contour.closed);
+    assert_eq!(contour.component_ids, vec![20]);
+    let SemanticEntity::HatchAssociation(association) = document.entity(36).unwrap() else {
+        panic!("entity 36 is not a hatch association")
+    };
+    assert_eq!((association.hatch_id, association.outer_loop_id), (33, 35));
+    let SemanticEntity::Property(pattern) = document.entity(7).unwrap() else {
+        panic!("entity 7 is not a hatch pattern property")
+    };
+    let pattern = pattern.hatch_pattern.as_ref().unwrap();
+    assert_eq!(pattern.lines.len(), 1);
+    assert_eq!(pattern.lines[0].distance, 1.0);
 
     assert_eq!(document.top_part_index, Some(3));
     assert_eq!(document.root_part_indices, vec![3]);
@@ -144,6 +173,25 @@ fn decodes_phase5_curves_annotations_and_part_structure() {
     assert_eq!(root.instances.len(), 2);
     assert!(root.instances.iter().all(|instance| instance.is_sheet));
     assert_eq!(root.instances[1].target_part_index, Some(2));
+}
+
+#[test]
+fn decodes_modern_variable_prefix_arc_from_terminal_point_fields() {
+    let legacy = b"ARC\n11\n3\n0\n1\n1\n2\n6\n7\n8\n0\n|~";
+    let modern = b"ARC\n11\n7\n0\n0.5\n0\n7\n422\n677\n847\n120\n122\n99\n6\n7\n8\n0\n|~";
+    let data = replace_once(GEOMETRY_MI, legacy, modern);
+
+    let document = read(&data, ScanOptions::default()).unwrap();
+    let SemanticEntity::Arc(arc) = document.entity(11).unwrap() else {
+        panic!("entity 11 is not an arc")
+    };
+    assert!(arc.graphic.is_none());
+    assert_eq!(arc.prefix_values.len(), 11);
+    assert_eq!((arc.center_id, arc.start_id, arc.end_id), (6, 7, 8));
+    assert_eq!(arc.ccw(), Some(true));
+    assert!(arc.center.is_some());
+    assert!(arc.start.is_some());
+    assert!(arc.end.is_some());
 }
 
 fn replace_once(input: &[u8], old: &[u8], new: &[u8]) -> Vec<u8> {

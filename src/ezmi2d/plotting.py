@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from .document import Document, Part
-from .entities import Arc, BSpline, Circle, Graphic, Line, Text
+from .entities import Affine2D, Arc, BSpline, Circle, Graphic, Line, Point, Text, Vec2
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -45,17 +45,18 @@ def draw(
     text_font_size: float = 8.0,
     text_font_family: str | None = None,
     warn_on_skipped: bool = True,
+    expand_instances: bool = False,
+    strict_instances: bool = True,
 ) -> Axes:
     """Draw decoded geometry from a document or part on a Matplotlib axes.
 
     Passing a :class:`~ezmi2d.Document` draws every directly decoded part
-    definition once. Assembly instance transforms are deliberately not applied
-    because their matrix convention is not yet part of ezmi2d's verified public
-    contract. Pass a :class:`~ezmi2d.Part` to inspect one definition in isolation.
+    definition once by default. Set ``expand_instances=True`` to traverse the
+    assembly tree and apply each occurrence's child-to-parent transform. Pass a
+    :class:`~ezmi2d.Part` to inspect one definition in isolation.
 
-    Arc orientation ``0`` is rendered counter-clockwise, matching every paired
-    MI/DXF sample in the current corpus. Other orientation values are skipped
-    with a warning instead of being guessed.
+    Arc direction is taken from :attr:`~ezmi2d.Arc.ccw`. Unverified orientation
+    codes are skipped with a warning instead of being guessed.
     """
 
     if not isinstance(source, (Document, Part)):
@@ -64,6 +65,10 @@ def draw(
         raise TypeError("curve_segments must be an integer")
     if curve_segments < 2:
         raise ValueError("curve_segments must be at least 2")
+    if not isinstance(expand_instances, bool):
+        raise TypeError("expand_instances must be a bool")
+    if not isinstance(strict_instances, bool):
+        raise TypeError("strict_instances must be a bool")
     _require_positive_finite("line_width", line_width)
     _require_positive_finite("point_size", point_size)
     _require_positive_finite("text_font_size", text_font_size)
@@ -80,17 +85,29 @@ def draw(
     unresolved_ids: list[int] = []
     unknown_orientation_ids: list[int] = []
 
-    for entity in source.entities:
+    graphic_items, point_items = _drawing_items(
+        source,
+        expand_instances=expand_instances,
+        strict_instances=strict_instances,
+    )
+
+    for entity, transform in graphic_items:
         if isinstance(entity, Text):
             continue
-        if isinstance(entity, Arc) and entity.orientation != 0:
+        if isinstance(entity, Arc) and entity.ccw is None:
             unknown_orientation_ids.append(entity.id)
             continue
         vertices = _entity_vertices(entity, curve_segments)
         if vertices is None:
             unresolved_ids.append(entity.id)
             continue
-        polylines[entity.mi_type].append(vertices)
+        polylines[entity.mi_type].append(
+            [
+                (placed.x, placed.y)
+                for x, y in vertices
+                for placed in (transform.transform_point(Vec2(x, y)),)
+            ]
+        )
 
     for kind in _GEOMETRY_ORDER:
         paths = polylines[kind]
@@ -105,10 +122,13 @@ def draw(
         )
         ax.add_collection(collection)
 
-    if show_points and source.points:
+    if show_points and point_items:
+        placed_points = [
+            transform.transform_point(point.location) for point, transform in point_items
+        ]
         ax.scatter(
-            [point.location.x for point in source.points],
-            [point.location.y for point in source.points],
+            [point.x for point in placed_points],
+            [point.y for point in placed_points],
             color=palette["P"],
             label="P",
             marker=".",
@@ -119,14 +139,19 @@ def draw(
     undecoded_text_ids: list[int] = []
     if show_text:
         font_options = {} if text_font_family is None else {"fontfamily": text_font_family}
-        for entity in source.texts:
+        for entity, transform in graphic_items:
+            if not isinstance(entity, Text):
+                continue
             if entity.text is None:
                 undecoded_text_ids.append(entity.id)
                 continue
             # The paired DXF corpus validates the baseline insertion point as
             # half a text height below the serialized MI origin.
-            x = entity.origin.x
-            y = entity.origin.y - entity.height / 2.0
+            position = transform.transform_point(
+                Vec2(entity.origin.x, entity.origin.y - entity.height / 2.0)
+            )
+            x = position.x
+            y = position.y
             ax.text(
                 x,
                 y,
@@ -152,6 +177,27 @@ def draw(
     return ax
 
 
+def _drawing_items(
+    source: Document | Part,
+    *,
+    expand_instances: bool,
+    strict_instances: bool,
+) -> tuple[list[tuple[Graphic, Affine2D]], list[tuple[Point, Affine2D]]]:
+    identity = Affine2D.identity()
+    if not isinstance(source, Document) or not expand_instances:
+        return (
+            [(entity, identity) for entity in source.entities],
+            [(point, identity) for point in source.points],
+        )
+
+    graphics: list[tuple[Graphic, Affine2D]] = []
+    points: list[tuple[Point, Affine2D]] = []
+    for occurrence in source.iter_part_occurrences(strict=strict_instances):
+        graphics.extend((entity, occurrence.world_transform) for entity in occurrence.part.entities)
+        points.extend((point, occurrence.world_transform) for point in occurrence.part.points)
+    return graphics, points
+
+
 def _entity_vertices(entity: Graphic, curve_segments: int) -> list[tuple[float, float]] | None:
     if isinstance(entity, Line):
         if entity.start is None or entity.end is None:
@@ -168,9 +214,12 @@ def _entity_vertices(entity: Graphic, curve_segments: int) -> list[tuple[float, 
             or entity.end_angle is None
         ):
             return None
-        sweep = (entity.end_angle - entity.start_angle) % math.tau
+        if entity.ccw:
+            sweep = (entity.end_angle - entity.start_angle) % math.tau
+        else:
+            sweep = -((entity.start_angle - entity.end_angle) % math.tau)
         if math.isclose(sweep, 0.0, abs_tol=1e-12):
-            sweep = math.tau
+            sweep = math.tau if entity.ccw else -math.tau
         vertices = [
             (
                 entity.center.x

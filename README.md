@@ -31,6 +31,15 @@ for spline in drawing.query("FIL BSPL"):
 
 for sheet in drawing.sheets:
     print(sheet.name, sheet.child_part_indices)
+
+for occurrence in drawing.iter_instances():
+    print(occurrence.path, occurrence.part.name, occurrence.world_transform)
+
+for dimension in drawing.dimensions:
+    print(dimension.measurement, dimension.formatted_text, dimension.text_position)
+
+for hatch in drawing.hatches:
+    print(hatch.pattern, hatch.boundary_loops)
 ```
 
 ## Matplotlib preview
@@ -50,17 +59,17 @@ import ezmi2d
 
 drawing = ezmi2d.read("drawing.mi")
 fig, ax = plt.subplots()
-ezmi2d.draw(drawing, ax=ax)
+ezmi2d.draw(drawing, ax=ax, expand_instances=True)
 ax.legend()
 fig.savefig("drawing.png", dpi=160)
 ```
 
-`ezmi2d.draw(Document)` renders every decoded part definition once; use
-`ezmi2d.draw(drawing.parts[index])` to inspect one part. This is a semantic
-diagnostic preview, not a style-faithful MI renderer: unknown display fields,
-typed-but-opaque annotations, and assembly instance transforms are not applied.
-The current sample corpus verifies `orientation=0` arcs as counter-clockwise;
-other orientation values are skipped with a warning rather than guessed.
+`ezmi2d.draw(Document)` renders every decoded part definition once by default;
+pass `expand_instances=True` to traverse nested/shared instances and apply their
+transforms, or pass one part to inspect its definition. This is a semantic
+diagnostic preview, not a style-faithful MI renderer. `Arc.ccw` is `True` for
+the corpus-verified orientation code `0`; unverified codes are `None` and are
+skipped with a warning rather than guessed.
 
 `read()` accepts a path or bytes-like object, including the verified
 gzip-compressed MI envelope. Point and property pointers are
@@ -115,11 +124,16 @@ ezmi2d inspect drawing.mi --json --records
 - legacy MI 2.10 global metadata, drawing extents, units, and serialized transform values
 - `#~6` part ownership and an ezdxf-style `modelspace()`, `query()`, and `entitydb`
 - typed `P`, `LIN`, `ARC`, `FIL`, `BSPL`, `CIR`, and `TEX` entities; point references are resolved
-- De Boor evaluation for non-rational `BSPL`, including modern variable-prefix records
-- typed dimension (`DANG`, `DCHMF`, `DDIA`, `DRAD`, `DSGL`), `DTV`, `LED`, `HAT`, and `SYML`
-- nested/shared `ASSE` instances, serialized 3x3 transforms, root parts, and `DOCU_SHEET` links
+- De Boor evaluation for `BSPL`, including rational weights when a verified layout records them
+- typed dimension (`DANG`, `DCHMF`, `DDIA`, `DRAD`, `DSGL`) references, measurement,
+  formatted text, placement, DDA/DTF style, and linked `DTV` tolerances
+- drawable `LED` vertices, `SYML` components, and associative `HAT` patterns/boundaries through
+  typed `COC`, `PFA`, and `HAPP` records
+- typed `Affine2D`, nested/shared `ASSE` occurrence traversal, composed child-to-parent transforms,
+  multi-sheet instances, root parts, and `DOCU_SHEET` links
 - strict UTF-8, Shift_JIS/CP932, and HP Roman-8 text decoding with explicit override support
-- minimally decoded `PSTAT`, `ASSP`, dimension/hatch properties, and `ASSE` records
+- typed `PSTAT`, `ASSP`, `DTA`, `DTF`, `DDA`, `DLA`, `DAF`, and `HAPP` property models,
+  while retaining unverified numeric enumerations in source order
 - stable diagnostics for duplicate IDs, bad records, dangling pointers, wrong pointer types,
   table-of-contents mismatch, and Phase 1 structural problems
 - `UnsupportedEntity` fallback with its original `RawRecord`; no addressable record is silently
@@ -128,19 +142,26 @@ ezmi2d inspect drawing.mi --json --records
 - streaming gzip decompression with container-size, expanded-size, ratio, truncation, checksum,
   trailing-data, and concatenated-member guards
 
-The four common graphic display fields are exposed conservatively as
-`display_values`, and the ARC direction field is retained as `orientation`:
-their formal names and complete semantics have not yet been established.
+Graphic source semantics are exposed as `color`, `linetype`, `lineweight`, resolved property
+tables, and `LAYER:` attributes. Legacy `display_values` remains a compatibility tuple whose
+fourth value is the property count, not visibility. The modern extra header value is retained as
+`visibility_value`; `visibility` stays `None` until that code is independently verified.
+ARC/FIL retain raw `orientation` and separately expose
+`ccw: bool | None`; an unknown code is never converted to `False`.
 Modern variable-prefix B-splines expose `display_values=None` and retain that
-prefix as `prefix_values` instead of guessing a style layout.
-For `TEX`, only fields validated across the available MI/DXF pairs are named:
-the serialized 3x3 transform, its translation as `origin`, font name, two text
-size values, height, and content. Every post-ID field remains available through
-`values`. Annotation fields, B-spline prefix values, and assembly relationship fields whose
-formal names are not verified are likewise exposed as lossless serialized values. Writers are
-not implemented. gzip-wrapped product-generated compressed MI is supported
-by content signature. zlib-wrapper, ZIP, and historical UNIX-compress variants
-remain unsupported. The available genuine sample is a compressed 2D MI member
+prefix as `prefix_values` instead of guessing a style layout. `closed`,
+`periodic`, `rational`, and `weights` are presence-aware; the currently verified
+layouts do not establish those meanings and therefore return `None`, distinct
+from an explicitly recorded `False`.
+For `TEX`, the serialized 3x3 transform, translation, rotation, width factor, mirror state,
+alignment, primary/alternate fonts, line spacing, and multiline content are named. Every post-ID
+field remains available through `values`. Dimension and annotation layouts are named only where
+the product corpus has a self-consistent reference or coordinate role; remaining fields,
+B-spline prefixes, and assembly relationship values stay lossless bytes. Writers are not
+implemented. gzip-wrapped product-generated compressed MI is supported
+by content signature. zlib-wrapper, ZIP, UNIX `compress`, and UNIX `pack`
+signatures are recognized and rejected as unsupported instead of being decoded
+by assumption. The available genuine sample is a compressed 2D MI member
 inside a Creo bundle, not a separately exported standalone `.bi`; compatibility
 with every Drafting/ME10 `.bi` generation is therefore not claimed.
 
@@ -160,8 +181,11 @@ evaluated against the decoded curves.
 
 It also verifies a product-generated MI 3.40 / UTF-8 compressed member from a
 public Creo bundle: 87,506 compressed bytes expand to 393,805 logical bytes.
-Its 88 B-splines, 88 typed annotations, 25-part hierarchy, and sheet association
-produce identical semantic models and diagnostics from compressed and expanded input.
+Its 853 lines, 187 arcs, 88 B-splines, 76 circles, 57 texts, 88 typed annotations,
+11 hatch contours, 9 hatch associations, 25-part hierarchy, and sheet association produce
+identical semantic models and diagnostics from compressed and expanded input. All 46 dimensions
+resolve their source geometry and point references; all 16 symbols resolve three graphic
+components. One COC member is a retained unsupported `PLN` record.
 
 ## Distribution
 

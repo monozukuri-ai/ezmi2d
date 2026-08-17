@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, cast
@@ -11,25 +11,37 @@ from ._core import read_legacy_document as _read_legacy_document
 from .diagnostics import Diagnostic
 from .entities import (
     AddressableEntity,
+    Affine2D,
     Annotation,
     Arc,
     Assembly,
     AssemblyInstance,
+    AssociatedStringsProperty,
     Bounds2,
     BSpline,
     BSplineSample,
     Circle,
+    Contour,
     Dimension,
+    DimensionArrowProperty,
+    DimensionDisplayAttributeProperty,
+    DimensionLineAttributeProperty,
+    DimensionTextAttributeProperty,
+    DimensionTextFormatProperty,
     DimensionTolerance,
     Fillet,
     Graphic,
     Hatch,
+    HatchAssociation,
+    HatchPatternLine,
+    HatchPatternProperty,
     Leader,
+    LeaderPoint,
     Line,
     MiEntity,
+    PartStatusProperty,
     Point,
     Property,
-    StructuredEntity,
     Symbol,
     Text,
     TextValue,
@@ -105,6 +117,8 @@ class Part:
     entities: tuple[Graphic, ...]
     texts: tuple[Text, ...]
     annotations: tuple[Annotation, ...]
+    contours: tuple[Contour, ...]
+    hatch_associations: tuple[HatchAssociation, ...]
     unsupported_entities: tuple[UnsupportedEntity, ...]
     source_entities: tuple[AddressableEntity, ...]
     assembly_id: int | None
@@ -132,6 +146,44 @@ class Part:
 
 
 @dataclass(frozen=True, slots=True)
+class InstancePathStep:
+    """Stable identity for one child entry in an ASSE record."""
+
+    assembly_id: int
+    instance_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class PartOccurrence:
+    """One placed occurrence of a part definition in an assembly tree."""
+
+    part: Part
+    instance: AssemblyInstance | None
+    instance_index: int | None
+    path: tuple[InstancePathStep, ...]
+    local_transform: Affine2D
+    world_transform: Affine2D
+    parent_part_index: int | None
+    is_sheet: bool
+
+    @property
+    def is_root(self) -> bool:
+        return self.instance is None
+
+
+@dataclass(frozen=True, slots=True)
+class PlacedGraphic:
+    """A graphic definition paired with its assembly occurrence transform."""
+
+    entity: Graphic
+    occurrence: PartOccurrence
+
+    @property
+    def world_transform(self) -> Affine2D:
+        return self.occurrence.world_transform
+
+
+@dataclass(frozen=True, slots=True)
 class Document:
     raw: RawScan
     encoding_info: EncodingInfo
@@ -152,6 +204,8 @@ class Document:
     leaders: tuple[Leader, ...]
     hatches: tuple[Hatch, ...]
     symbols: tuple[Symbol, ...]
+    contours: tuple[Contour, ...]
+    hatch_associations: tuple[HatchAssociation, ...]
     properties: tuple[Property, ...]
     assemblies: tuple[Assembly, ...]
     unsupported_entities: tuple[UnsupportedEntity, ...]
@@ -235,6 +289,112 @@ class Document:
     def parent_parts(self, part: Part) -> tuple[Part, ...]:
         return tuple(self.parts[index] for index in part.parent_part_indices)
 
+    def iter_part_occurrences(
+        self,
+        root: Part | None = None,
+        *,
+        include_root: bool = True,
+        strict: bool = True,
+    ) -> Iterator[PartOccurrence]:
+        """Traverse placed part occurrences in source instance order.
+
+        Shared definitions are yielded once per instance path. ``world_transform``
+        maps geometry from the yielded part's local coordinates into ``root``
+        coordinates. Unbound, non-affine, and cyclic instances raise by default;
+        pass ``strict=False`` to omit those branches.
+        """
+
+        selected_root = self.top_part if root is None else root
+        if selected_root is None:
+            return
+        if not (0 <= selected_root.index < len(self.parts)):
+            raise ValueError("root part index is outside this document")
+        if self.parts[selected_root.index] is not selected_root:
+            raise ValueError("root part does not belong to this document")
+
+        identity = Affine2D.identity()
+        root_occurrence = PartOccurrence(
+            part=selected_root,
+            instance=None,
+            instance_index=None,
+            path=(),
+            local_transform=identity,
+            world_transform=identity,
+            parent_part_index=None,
+            is_sheet=False,
+        )
+        stack: list[tuple[PartOccurrence, tuple[int, ...]]] = [
+            (root_occurrence, (selected_root.index,))
+        ]
+        while stack:
+            occurrence, ancestry = stack.pop()
+            if include_root or not occurrence.is_root:
+                yield occurrence
+
+            assembly = occurrence.part.assembly
+            if assembly is None:
+                continue
+            children: list[tuple[PartOccurrence, tuple[int, ...]]] = []
+            for instance_index, instance in enumerate(assembly.instances):
+                target_index = instance.target_part_index
+                if target_index is None or not (0 <= target_index < len(self.parts)):
+                    if strict:
+                        raise LookupError(
+                            f"ASSE {assembly.id} instance {instance_index} has no bound part"
+                        )
+                    continue
+                if target_index in ancestry:
+                    if strict:
+                        path = (*occurrence.path, InstancePathStep(assembly.id, instance_index))
+                        raise ValueError(f"assembly cycle at instance path {path!r}")
+                    continue
+                try:
+                    local_transform = instance.to_affine2d()
+                except (TypeError, ValueError):
+                    if strict:
+                        raise
+                    continue
+                child = self.parts[target_index]
+                path = (*occurrence.path, InstancePathStep(assembly.id, instance_index))
+                child_occurrence = PartOccurrence(
+                    part=child,
+                    instance=instance,
+                    instance_index=instance_index,
+                    path=path,
+                    local_transform=local_transform,
+                    world_transform=occurrence.world_transform.compose(local_transform),
+                    parent_part_index=occurrence.part.index,
+                    is_sheet=instance.is_sheet,
+                )
+                children.append((child_occurrence, (*ancestry, target_index)))
+            stack.extend(reversed(children))
+
+    def iter_instances(
+        self,
+        root: Part | None = None,
+        *,
+        strict: bool = True,
+    ) -> Iterator[PartOccurrence]:
+        """Traverse non-root part occurrences, including shared and sheet instances."""
+
+        yield from self.iter_part_occurrences(root, include_root=False, strict=strict)
+
+    @property
+    def sheet_instances(self) -> tuple[PartOccurrence, ...]:
+        return tuple(occurrence for occurrence in self.iter_instances() if occurrence.is_sheet)
+
+    def iter_placed_graphics(
+        self,
+        root: Part | None = None,
+        *,
+        strict: bool = True,
+    ) -> Iterator[PlacedGraphic]:
+        """Yield graphics once per placed part occurrence."""
+
+        for occurrence in self.iter_part_occurrences(root, strict=strict):
+            for entity in occurrence.part.entities:
+                yield PlacedGraphic(entity=entity, occurrence=occurrence)
+
 
 Drawing = Document
 
@@ -277,19 +437,23 @@ def _document_from_core(data: bytes, row: Mapping[str, Any]) -> Document:
             built[index] = _property_from_core(entity_row, raw_records)
         elif kind == "assembly":
             built[index] = _assembly_from_core(entity_row, raw_records)
-        elif kind == "dimension":
-            built[index] = _structured_from_core(Dimension, entity_row, raw_records)
-        elif kind == "dimension_tolerance":
-            built[index] = _structured_from_core(DimensionTolerance, entity_row, raw_records)
-        elif kind == "leader":
-            built[index] = _structured_from_core(Leader, entity_row, raw_records)
-        elif kind == "hatch":
-            built[index] = _structured_from_core(Hatch, entity_row, raw_records)
-        elif kind == "symbol":
-            built[index] = _structured_from_core(Symbol, entity_row, raw_records)
         elif kind == "unsupported":
             built[index] = _unsupported_from_core(entity_row, raw_records)
-        elif kind not in {"line", "arc", "fillet", "bspline", "circle", "text"}:
+        elif kind not in {
+            "line",
+            "arc",
+            "fillet",
+            "bspline",
+            "circle",
+            "text",
+            "dimension",
+            "dimension_tolerance",
+            "leader",
+            "contour",
+            "hatch",
+            "hatch_association",
+            "symbol",
+        }:
             raise RuntimeError(f"native core returned unknown semantic entity kind: {kind!r}")
 
     pointdb: dict[int, Point] = {}
@@ -319,6 +483,50 @@ def _document_from_core(data: bytes, row: Mapping[str, Any]) -> Document:
             built[index] = _circle_from_core(entity_row, raw_records, pointdb, propertydb)
         elif kind == "text":
             built[index] = _text_entity_from_core(entity_row, raw_records, propertydb)
+        elif kind == "dimension_tolerance":
+            built[index] = _dimension_tolerance_from_core(entity_row, raw_records, propertydb)
+        elif kind == "leader":
+            built[index] = _leader_from_core(entity_row, raw_records, propertydb)
+
+    graphicdb: dict[int, Graphic] = {}
+    tolerancedb: dict[int, DimensionTolerance] = {}
+    for entity in built:
+        if isinstance(entity, (Line, Arc, Fillet, BSpline, Circle, Text)):
+            graphicdb.setdefault(entity.id, entity)
+        elif isinstance(entity, DimensionTolerance):
+            tolerancedb.setdefault(entity.id, entity)
+
+    for index, entity_row in enumerate(entity_rows):
+        kind = entity_row["kind"]
+        if kind == "dimension":
+            built[index] = _dimension_from_core(
+                entity_row,
+                raw_records,
+                pointdb,
+                graphicdb,
+                propertydb,
+                tolerancedb,
+            )
+        elif kind == "contour":
+            built[index] = _contour_from_core(entity_row, raw_records, graphicdb, propertydb)
+        elif kind == "symbol":
+            built[index] = _symbol_from_core(entity_row, raw_records, graphicdb)
+
+    contourdb = {entity.id: entity for entity in built if isinstance(entity, Contour)}
+    for index, entity_row in enumerate(entity_rows):
+        if entity_row["kind"] == "hatch":
+            built[index] = _hatch_from_core(entity_row, raw_records, contourdb, propertydb)
+
+    hatchdb = {entity.id: entity for entity in built if isinstance(entity, Hatch)}
+    for index, entity_row in enumerate(entity_rows):
+        if entity_row["kind"] == "hatch_association":
+            built[index] = _hatch_association_from_core(
+                entity_row,
+                raw_records,
+                hatchdb,
+                contourdb,
+                propertydb,
+            )
 
     missing = [index for index, entity in enumerate(built) if entity is None]
     if missing:
@@ -366,6 +574,10 @@ def _document_from_core(data: bytes, row: Mapping[str, Any]) -> Document:
         leaders=tuple(entity for entity in all_entities if isinstance(entity, Leader)),
         hatches=tuple(entity for entity in all_entities if isinstance(entity, Hatch)),
         symbols=tuple(entity for entity in all_entities if isinstance(entity, Symbol)),
+        contours=tuple(entity for entity in all_entities if isinstance(entity, Contour)),
+        hatch_associations=tuple(
+            entity for entity in all_entities if isinstance(entity, HatchAssociation)
+        ),
         properties=tuple(entity for entity in all_entities if isinstance(entity, Property)),
         assemblies=tuple(entity for entity in all_entities if isinstance(entity, Assembly)),
         unsupported_entities=tuple(
@@ -395,12 +607,28 @@ def _graphic_fields(
     )
     if values is not None and len(values) != 4:
         raise ValueError(f"native display_values length is {len(values)}, expected 4")
+    property_ids = tuple(int(value) for value in row["property_ids"])
     property_id = None if row["property_id"] is None else int(row["property_id"])
+    properties = tuple(
+        property_value
+        for property_value in (propertydb.get(value) for value in property_ids)
+        if property_value is not None
+    )
     return {
         **_base_fields(row, raw_records),
         "display_values": cast(tuple[int, int, int, int] | None, values),
+        "color": int(row["color"]),
+        "linetype": int(row["linetype"]),
+        "lineweight": float(row["lineweight"]),
+        "visibility": None if row["visibility"] is None else bool(row["visibility"]),
+        "visibility_value": (
+            None if row["visibility_value"] is None else int(row["visibility_value"])
+        ),
+        "property_ids": property_ids,
         "property_id": property_id,
         "property": None if property_id is None else propertydb.get(property_id),
+        "properties": properties,
+        "layers": _layers_from_properties(properties),
     }
 
 
@@ -411,10 +639,81 @@ def _point_from_core(row: Mapping[str, Any], raw_records: tuple[Any, ...]) -> Po
 
 
 def _property_from_core(row: Mapping[str, Any], raw_records: tuple[Any, ...]) -> Property:
-    return Property(
+    fields = {
         **_base_fields(row, raw_records),
-        values=tuple(bytes(value) for value in row["values"]),
-    )
+        "values": tuple(bytes(value) for value in row["values"]),
+    }
+    part_status = row["part_status"]
+    if part_status is not None:
+        status = _mapping(part_status)
+        return PartStatusProperty(
+            **fields,
+            shared=bool(status["shared"]),
+            scale_modifiable=bool(status["scale_modifiable"]),
+        )
+    associated_strings = row["associated_strings"]
+    if associated_strings is not None:
+        return AssociatedStringsProperty(
+            **fields,
+            strings=tuple(_text_from_core(_mapping(value)) for value in associated_strings),
+        )
+    dimension_text_attribute = row["dimension_text_attribute"]
+    if dimension_text_attribute is not None:
+        value = _mapping(dimension_text_attribute)
+        return DimensionTextAttributeProperty(
+            **fields,
+            font_name_value=_text_from_core(_mapping(value["font_name"])),
+            alternate_font_name_value=_text_from_core(_mapping(value["alternate_font_name"])),
+            symbol_font_name_value=_text_from_core(_mapping(value["symbol_font_name"])),
+            definition_values=tuple(float(item) for item in value["definition_values"]),
+        )
+    integer_definition = row["integer_definition"]
+    if integer_definition is not None:
+        values = tuple(int(item) for item in integer_definition)
+        if row["mi_type"] == "DTF":
+            return DimensionTextFormatProperty(**fields, definition_values=values)
+        if row["mi_type"] == "DDA":
+            return DimensionDisplayAttributeProperty(**fields, definition_values=values)
+        raise RuntimeError(f"unexpected integer property type: {row['mi_type']!r}")
+    numeric_definition = row["numeric_definition"]
+    if numeric_definition is not None:
+        values = tuple(float(item) for item in numeric_definition)
+        if row["mi_type"] == "DLA":
+            return DimensionLineAttributeProperty(**fields, definition_values=values)
+        if row["mi_type"] == "DAF":
+            return DimensionArrowProperty(**fields, definition_values=values)
+        raise RuntimeError(f"unexpected numeric property type: {row['mi_type']!r}")
+    hatch_pattern = row["hatch_pattern"]
+    if hatch_pattern is not None:
+        return HatchPatternProperty(
+            **fields,
+            lines=tuple(
+                HatchPatternLine(
+                    offset=float(_mapping(item)["offset"]),
+                    distance=float(_mapping(item)["distance"]),
+                    angle=float(_mapping(item)["angle"]),
+                    color=int(_mapping(item)["color"]),
+                    linetype=int(_mapping(item)["linetype"]),
+                )
+                for item in hatch_pattern
+            ),
+        )
+    return Property(**fields)
+
+
+def _layers_from_properties(properties: tuple[Property, ...]) -> tuple[str, ...]:
+    layers: list[str] = []
+    for property_value in properties:
+        if not isinstance(property_value, AssociatedStringsProperty):
+            continue
+        for string in property_value.strings:
+            text = string.text
+            if text is None or not text.startswith("LAYER:"):
+                continue
+            layer = text.partition(":")[2].strip()
+            if layer and layer not in layers:
+                layers.append(layer)
+    return tuple(layers)
 
 
 def _assembly_from_core(row: Mapping[str, Any], raw_records: tuple[Any, ...]) -> Assembly:
@@ -453,14 +752,175 @@ def _assembly_instance_from_core(row: Mapping[str, Any]) -> AssemblyInstance:
     )
 
 
-def _structured_from_core(
-    entity_type: type[StructuredEntity],
+def _dimension_tolerance_from_core(
     row: Mapping[str, Any],
     raw_records: tuple[Any, ...],
-) -> StructuredEntity:
-    return entity_type(
+    propertydb: Mapping[int, Property],
+) -> DimensionTolerance:
+    text_style_id = int(row["text_style_id"])
+    return DimensionTolerance(
         **_base_fields(row, raw_records),
         values=tuple(bytes(value) for value in row["values"]),
+        definition_value=int(row["definition_value"]),
+        upper_value=float(row["upper_value"]),
+        lower_value=float(row["lower_value"]),
+        format_value=int(row["format_value"]),
+        upper_text_value=_text_from_core(_mapping(row["upper_text"])),
+        lower_text_value=_text_from_core(_mapping(row["lower_text"])),
+        text_style_id=text_style_id,
+        text_style=propertydb.get(text_style_id),
+        alignment=int(row["alignment"]),
+    )
+
+
+def _leader_from_core(
+    row: Mapping[str, Any],
+    raw_records: tuple[Any, ...],
+    propertydb: Mapping[int, Property],
+) -> Leader:
+    return Leader(
+        **_graphic_fields(row, raw_records, propertydb),
+        arrow_type=int(row["arrow_type"]),
+        arrow_size=float(row["arrow_size"]),
+        points=tuple(
+            LeaderPoint(
+                location=Vec2(x=float(_mapping(value)["x"]), y=float(_mapping(value)["y"])),
+                elevation=float(_mapping(value)["z"]),
+            )
+            for value in row["points"]
+        ),
+        values=tuple(bytes(value) for value in row["values"]),
+    )
+
+
+def _dimension_from_core(
+    row: Mapping[str, Any],
+    raw_records: tuple[Any, ...],
+    pointdb: Mapping[int, Point],
+    graphicdb: Mapping[int, Graphic],
+    propertydb: Mapping[int, Property],
+    tolerancedb: Mapping[int, DimensionTolerance],
+) -> Dimension:
+    property_ids = tuple(int(value) for value in row["property_ids"])
+    geometry_ids = tuple(int(value) for value in row["reference_geometry_ids"])
+    point_ids = tuple(int(value) for value in row["reference_point_ids"])
+    dimension_style_id = (
+        None if row["dimension_style_id"] is None else int(row["dimension_style_id"])
+    )
+    text_style_id = None if row["text_style_id"] is None else int(row["text_style_id"])
+    tolerance_ids = tuple(int(value) for value in row["tolerance_ids"])
+    return Dimension(
+        **_base_fields(row, raw_records),
+        values=tuple(bytes(value) for value in row["values"]),
+        property_ids=property_ids,
+        properties=tuple(
+            value
+            for value in (propertydb.get(property_id) for property_id in property_ids)
+            if value is not None
+        ),
+        reference_geometry_ids=geometry_ids,
+        reference_geometries=tuple(graphicdb.get(entity_id) for entity_id in geometry_ids),
+        reference_point_ids=point_ids,
+        reference_points=tuple(pointdb.get(entity_id) for entity_id in point_ids),
+        text_position=_vec_from_core(_mapping(row["text_position"])),
+        measurement=float(row["measurement"]),
+        formatted_text_value=_text_from_core(_mapping(row["formatted_text"])),
+        dimension_style_id=dimension_style_id,
+        dimension_style=(
+            None if dimension_style_id is None else propertydb.get(dimension_style_id)
+        ),
+        text_style_id=text_style_id,
+        text_style=None if text_style_id is None else propertydb.get(text_style_id),
+        tolerance_ids=tolerance_ids,
+        tolerances=tuple(tolerancedb.get(entity_id) for entity_id in tolerance_ids),
+    )
+
+
+def _contour_from_core(
+    row: Mapping[str, Any],
+    raw_records: tuple[Any, ...],
+    graphicdb: Mapping[int, Graphic],
+    propertydb: Mapping[int, Property],
+) -> Contour:
+    component_ids = tuple(int(value) for value in row["component_ids"])
+    return Contour(
+        **_graphic_fields(row, raw_records, propertydb),
+        closed=bool(row["closed"]),
+        orientation=int(row["orientation"]),
+        component_ids=component_ids,
+        components=tuple(graphicdb.get(entity_id) for entity_id in component_ids),
+        values=tuple(bytes(value) for value in row["values"]),
+    )
+
+
+def _symbol_from_core(
+    row: Mapping[str, Any],
+    raw_records: tuple[Any, ...],
+    graphicdb: Mapping[int, Graphic],
+) -> Symbol:
+    component_ids = tuple(int(value) for value in row["component_ids"])
+    return Symbol(
+        **_base_fields(row, raw_records),
+        values=tuple(bytes(value) for value in row["values"]),
+        component_ids=component_ids,
+        components=tuple(graphicdb.get(entity_id) for entity_id in component_ids),
+    )
+
+
+def _hatch_from_core(
+    row: Mapping[str, Any],
+    raw_records: tuple[Any, ...],
+    contourdb: Mapping[int, Contour],
+    propertydb: Mapping[int, Property],
+) -> Hatch:
+    graphic_fields = _graphic_fields(row, raw_records, propertydb)
+    boundary_loop_ids = tuple(int(value) for value in row["boundary_loop_ids"])
+    pattern = next(
+        (
+            value
+            for value in graphic_fields["properties"]
+            if isinstance(value, HatchPatternProperty)
+        ),
+        None,
+    )
+    return Hatch(
+        **graphic_fields,
+        reference_point=_vec_from_core(_mapping(row["reference_point"])),
+        angle=float(row["angle"]),
+        spacing=float(row["spacing"]),
+        boundary_loop_ids=boundary_loop_ids,
+        boundary_loops=tuple(contourdb.get(entity_id) for entity_id in boundary_loop_ids),
+        pattern=pattern,
+        values=tuple(bytes(value) for value in row["values"]),
+    )
+
+
+def _hatch_association_from_core(
+    row: Mapping[str, Any],
+    raw_records: tuple[Any, ...],
+    hatchdb: Mapping[int, Hatch],
+    contourdb: Mapping[int, Contour],
+    propertydb: Mapping[int, Property],
+) -> HatchAssociation:
+    property_ids = tuple(int(value) for value in row["property_ids"])
+    hatch_id = int(row["hatch_id"])
+    outer_loop_id = int(row["outer_loop_id"])
+    inner_loop_ids = tuple(int(value) for value in row["inner_loop_ids"])
+    return HatchAssociation(
+        **_base_fields(row, raw_records),
+        values=tuple(bytes(value) for value in row["values"]),
+        property_ids=property_ids,
+        properties=tuple(
+            value
+            for value in (propertydb.get(property_id) for property_id in property_ids)
+            if value is not None
+        ),
+        hatch_id=hatch_id,
+        hatch=hatchdb.get(hatch_id),
+        outer_loop_id=outer_loop_id,
+        outer_loop=contourdb.get(outer_loop_id),
+        inner_loop_ids=inner_loop_ids,
+        inner_loops=tuple(contourdb.get(entity_id) for entity_id in inner_loop_ids),
     )
 
 
@@ -498,10 +958,12 @@ def _arc_from_core(
     end_id = int(row["end_id"])
     return Arc(
         **_graphic_fields(row, raw_records, propertydb),
+        prefix_values=tuple(bytes(value) for value in row["prefix_values"]),
         center_id=center_id,
         start_id=start_id,
         end_id=end_id,
         orientation=int(row["orientation"]),
+        ccw=None if row["ccw"] is None else bool(row["ccw"]),
         center_point=pointdb.get(center_id),
         start_point=pointdb.get(start_id),
         end_point=pointdb.get(end_id),
@@ -522,10 +984,12 @@ def _fillet_from_core(
     end_id = int(row["end_id"])
     return Fillet(
         **_graphic_fields(row, raw_records, propertydb),
+        prefix_values=tuple(bytes(value) for value in row["prefix_values"]),
         center_id=center_id,
         start_id=start_id,
         end_id=end_id,
         orientation=int(row["orientation"]),
+        ccw=None if row["ccw"] is None else bool(row["ccw"]),
         center_point=pointdb.get(center_id),
         start_point=pointdb.get(start_id),
         end_point=pointdb.get(end_id),
@@ -573,6 +1037,12 @@ def _bspline_from_core(
         order=int(row["order"]),
         degree=int(row["degree"]),
         definition_values=cast(tuple[bytes, bytes], definition_values),
+        closed=None if row["closed"] is None else bool(row["closed"]),
+        periodic=None if row["periodic"] is None else bool(row["periodic"]),
+        rational=None if row["rational"] is None else bool(row["rational"]),
+        weights=(
+            None if row["weights"] is None else tuple(float(value) for value in row["weights"])
+        ),
         parameter_max=float(row["parameter_max"]),
         parameter_domain=cast(tuple[float, float], domain),
         start_id=start_id,
@@ -618,11 +1088,18 @@ def _text_entity_from_core(
         raise ValueError(f"native text size length is {len(size_values)}, expected 2")
     return Text(
         **_graphic_fields(row, raw_records, propertydb),
+        alignment=int(row["alignment"]),
         transform_values=transform_values,
         origin=_vec_from_core(_mapping(row["origin"])),
+        rotation=float(row["rotation"]),
+        width_factor=float(row["width_factor"]),
+        mirrored=bool(row["mirrored"]),
         font_name_value=_text_from_core(_mapping(row["font_name"])),
+        alternate_font_name_value=_optional_text(row["alternate_font_name"]),
         size_values=cast(tuple[float, float], size_values),
         height=float(row["height"]),
+        line_spacing=float(row["line_spacing"]),
+        line_values=tuple(_text_from_core(_mapping(value)) for value in row["lines"]),
         content_value=_text_from_core(_mapping(row["content"])),
         values=tuple(bytes(value) for value in row["values"]),
     )
@@ -651,6 +1128,10 @@ def _part_from_core(
             cast(Annotation, entity)
             for entity in source_entities
             if isinstance(entity, (Dimension, DimensionTolerance, Leader, Hatch, Symbol))
+        ),
+        contours=tuple(entity for entity in source_entities if isinstance(entity, Contour)),
+        hatch_associations=tuple(
+            entity for entity in source_entities if isinstance(entity, HatchAssociation)
         ),
         unsupported_entities=tuple(
             entity for entity in source_entities if isinstance(entity, UnsupportedEntity)

@@ -18,14 +18,20 @@ licensed external corpus. A `SHA256SUMS` file is generated after the set passes 
 
 ## One-time PyPI configuration
 
-Configure a PyPI Trusted Publisher for:
+The `ezmi2d` project endpoint is absent as of 2026-08-17. Before the first release, configure a
+[pending Trusted Publisher](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/)
+from the PyPI account's Publishing page; the first successful upload will create the project and
+convert it to a normal publisher. Configure:
 
+- PyPI project name: `ezmi2d`;
 - owner/repository: `monozukuri-ai/ezmi2d`;
 - workflow: `release.yml`;
 - environment: `pypi`.
 
 Configure the matching protected `pypi` GitHub environment; manual approval is recommended. Only
-the tag-only publish job receives `id-token: write`. No long-lived PyPI token is used.
+the tag-only publish job receives `id-token: write`. No long-lived PyPI token is used. A pending
+publisher does not reserve the project name before the first upload, so confirm the endpoint again
+immediately before pushing the first release tag.
 
 ## Prepare a version
 
@@ -47,7 +53,7 @@ uv run maturin develop --release --locked
 uv run ruff format --check src tests benchmarks scripts/*.py
 uv run ruff check src tests benchmarks scripts/*.py
 uv run pytest -q
-python scripts/check_release_version.py --tag v0.1.0
+python scripts/check_release_version.py --tag v0.2.0
 ```
 
 Build and inspect the native local wheel plus sdist before tagging:
@@ -57,7 +63,7 @@ rm -rf dist
 uv run maturin build --release --locked --out dist
 uv run maturin sdist --out dist
 python scripts/verify_release_artifacts.py \
-  --dist dist --version 0.1.0 --expected-platform linux-x86_64 --require-sdist
+  --dist dist --version 0.2.0 --expected-platform linux-x86_64 --require-sdist
 ```
 
 Use the platform matching the local wheel when running the verifier. The release workflow passes all

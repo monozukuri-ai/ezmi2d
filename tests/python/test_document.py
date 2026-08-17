@@ -59,6 +59,16 @@ def test_read_builds_typed_geometry_and_resolves_references() -> None:
     line = document.get(10)
     assert isinstance(line, ezmi2d.Line)
     assert line.display_values == (3, 0, 1, 1)
+    assert line.color == 3
+    assert line.color_name == "yellow"
+    assert line.linetype == 0
+    assert line.linetype_name == "solid"
+    assert line.lineweight == 1.0
+    assert line.visibility is None
+    assert line.property_ids == (2,)
+    assert line.properties == (document.get(2),)
+    assert line.layer == "1"
+    assert line.layers == ("1",)
     assert line.property_id == 2
     assert line.property is document.get(2)
     assert line.start_id == 4
@@ -69,12 +79,21 @@ def test_read_builds_typed_geometry_and_resolves_references() -> None:
     assert line.end == ezmi2d.Vec2(10.0, 0.0)
     assert line.raw_record.record_type == "LIN"
 
+    part_status = document.get(1)
+    assert isinstance(part_status, ezmi2d.PartStatusProperty)
+    assert part_status.shared is False
+    assert part_status.scale_modifiable is False
+    layer_property = document.get(2)
+    assert isinstance(layer_property, ezmi2d.AssociatedStringsProperty)
+    assert tuple(value.text for value in layer_property.strings) == ("LAYER: 1",)
+
     arc = document.get(11)
     assert isinstance(arc, ezmi2d.Arc)
     assert arc.center == ezmi2d.Vec2(5.0, 5.0)
     assert arc.start == ezmi2d.Vec2(10.0, 5.0)
     assert arc.end == ezmi2d.Vec2(5.0, 10.0)
     assert arc.orientation == 0
+    assert arc.ccw is True
     assert arc.radius == pytest.approx(5.0)
     assert arc.start_angle == pytest.approx(0.0)
     assert arc.end_angle == pytest.approx(math.pi / 2.0)

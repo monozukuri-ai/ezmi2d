@@ -83,11 +83,21 @@ pub struct EntityHeader {
     pub part_index: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GraphicHeader {
     pub entity: EntityHeader,
-    /// Four legacy display fields whose formal names are not yet verified.
-    pub display_values: [i64; 4],
+    /// Compatibility view of the four legacy values: color, linetype, lineweight,
+    /// and property count. Modern variable-property headers expose `None`.
+    pub display_values: Option<[i64; 4]>,
+    pub color: i64,
+    pub linetype: i64,
+    pub lineweight: f64,
+    /// Visibility remains absent until the modern header flag is independently verified.
+    pub visibility: Option<bool>,
+    /// Extra modern header value retained without assigning visibility semantics.
+    pub visibility_value: Option<i64>,
+    pub property_ids: Vec<EntityId>,
+    /// First property pointer retained for compatibility with the original API.
     pub property_id: Option<EntityId>,
 }
 
@@ -108,11 +118,15 @@ pub struct LineEntity {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArcEntity {
-    pub graphic: GraphicHeader,
+    pub entity: EntityHeader,
+    /// Present for the verified legacy layout. Modern layouts retain their prefix verbatim.
+    pub graphic: Option<GraphicHeader>,
+    /// Fields between the entity ID and the terminal center/start/end/orientation fields.
+    pub prefix_values: Vec<Vec<u8>>,
     pub center_id: EntityId,
     pub start_id: EntityId,
     pub end_id: EntityId,
-    /// Legacy orientation field. Its value is retained even when unsupported.
+    /// Serialized orientation code. Its raw value is retained even when unsupported.
     pub orientation: i64,
     pub center: Option<Point2>,
     pub start: Option<Point2>,
@@ -120,6 +134,14 @@ pub struct ArcEntity {
 }
 
 impl ArcEntity {
+    /// Return the verified curve direction without guessing unknown orientation codes.
+    pub const fn ccw(&self) -> Option<bool> {
+        match self.orientation {
+            0 => Some(true),
+            _ => None,
+        }
+    }
+
     pub fn radius(&self) -> Option<f64> {
         Some(self.center.as_ref()?.distance_to(self.start.as_ref()?))
     }
@@ -152,6 +174,12 @@ pub struct BSplineEntity {
     pub order: usize,
     /// Two serialized values immediately following `order`.
     pub definition_values: [Vec<u8>; 2],
+    /// Curve flags are `None` when the selected MI layout does not record verified semantics.
+    pub closed: Option<bool>,
+    pub periodic: Option<bool>,
+    pub rational: Option<bool>,
+    /// Rational control-point weights, when explicitly present in a verified layout.
+    pub weights: Option<Vec<f64>>,
     pub parameter_max: f64,
     pub start_id: EntityId,
     pub end_id: EntityId,
@@ -176,7 +204,7 @@ impl BSplineEntity {
         Some((*self.knots.get(degree)?, *self.knots.get(end_index)?))
     }
 
-    /// Evaluate the non-rational B-spline with De Boor's algorithm.
+    /// Evaluate the B-spline with De Boor's algorithm.
     pub fn evaluate(&self, parameter: f64) -> Option<Point2> {
         if !parameter.is_finite() || self.control_points.iter().any(Option::is_none) {
             return None;
@@ -200,8 +228,25 @@ impl BSplineEntity {
                 self.knots[*index] <= parameter && parameter < self.knots[*index + 1]
             })?
         };
+        let weights = if self.rational == Some(true) {
+            let weights = self.weights.as_ref()?;
+            if weights.len() != points.len() || weights.iter().any(|weight| !weight.is_finite()) {
+                return None;
+            }
+            Some(weights)
+        } else {
+            None
+        };
+        let homogeneous = points
+            .iter()
+            .enumerate()
+            .map(|(index, point)| {
+                let weight = weights.map_or(1.0, |values| values[index]);
+                (point.x * weight, point.y * weight, weight)
+            })
+            .collect::<Vec<_>>();
         let mut work = (0..=degree)
-            .map(|offset| points[knot_span - degree + offset].clone())
+            .map(|offset| homogeneous[knot_span - degree + offset])
             .collect::<Vec<_>>();
         for level in 1..=degree {
             for offset in (level..=degree).rev() {
@@ -213,13 +258,18 @@ impl BSplineEntity {
                 } else {
                     (parameter - self.knots[knot_index]) / denominator
                 };
-                work[offset] = Point2::new(
-                    (1.0 - alpha) * work[offset - 1].x + alpha * work[offset].x,
-                    (1.0 - alpha) * work[offset - 1].y + alpha * work[offset].y,
+                work[offset] = (
+                    (1.0 - alpha) * work[offset - 1].0 + alpha * work[offset].0,
+                    (1.0 - alpha) * work[offset - 1].1 + alpha * work[offset].1,
+                    (1.0 - alpha) * work[offset - 1].2 + alpha * work[offset].2,
                 );
             }
         }
-        work.pop()
+        let (x, y, weight) = work.pop()?;
+        if weight.abs() <= f64::EPSILON {
+            return None;
+        }
+        Some(Point2::new(x / weight, y / weight))
     }
 }
 
@@ -235,11 +285,16 @@ pub struct CircleEntity {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextEntity {
     pub graphic: GraphicHeader,
-    /// Nine serialized transform values from fields 8 through 16.
+    /// Text origin adjustment code: 1 (lower-left) through 9 (upper-right).
+    pub alignment: usize,
+    /// Serialized row-major 3x3 transform.
     pub transform_values: [f64; 9],
     pub font_name: TextValue,
-    /// Two serialized text-size values from fields 22 and 23.
+    pub alternate_font_name: Option<TextValue>,
+    /// Serialized character width and height values.
     pub size_values: [f64; 2],
+    pub line_spacing: f64,
+    pub lines: Vec<TextValue>,
     pub content: TextValue,
     /// All fields after the entity ID, retained without speculative names.
     pub values: Vec<Vec<u8>>,
@@ -252,7 +307,23 @@ impl TextEntity {
     }
 
     pub const fn height(&self) -> f64 {
-        self.size_values[0]
+        self.size_values[1]
+    }
+
+    pub fn rotation(&self) -> f64 {
+        self.transform_values[3]
+            .atan2(self.transform_values[0])
+            .rem_euclid(std::f64::consts::TAU)
+    }
+
+    pub fn width_factor(&self) -> Option<f64> {
+        (self.size_values[1] != 0.0).then_some(self.size_values[0] / self.size_values[1])
+    }
+
+    pub fn is_mirrored(&self) -> bool {
+        self.transform_values[0] * self.transform_values[4]
+            - self.transform_values[3] * self.transform_values[1]
+            < 0.0
     }
 }
 
@@ -266,10 +337,133 @@ impl CircleEntity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PropertyEntity {
     pub entity: EntityHeader,
     pub mi_type: String,
+    pub values: Vec<Vec<u8>>,
+    pub part_status: Option<PartStatusProperty>,
+    pub associated_strings: Option<Vec<TextValue>>,
+    pub dimension_text_attribute: Option<DimensionTextAttributeProperty>,
+    pub integer_definition: Option<Vec<i64>>,
+    pub numeric_definition: Option<Vec<f64>>,
+    pub hatch_pattern: Option<HatchPatternProperty>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartStatusProperty {
+    pub shared: bool,
+    pub scale_modifiable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DimensionTextAttributeProperty {
+    pub font_name: TextValue,
+    pub alternate_font_name: TextValue,
+    pub symbol_font_name: TextValue,
+    /// Remaining serialized numeric values. Their individual meanings vary by MI version.
+    pub definition_values: Vec<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HatchPatternLine {
+    pub offset: f64,
+    pub distance: f64,
+    pub angle: f64,
+    pub color: i64,
+    pub linetype: i64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HatchPatternProperty {
+    pub lines: Vec<HatchPatternLine>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DimensionEntity {
+    pub entity: EntityHeader,
+    pub mi_type: String,
+    pub property_ids: Vec<EntityId>,
+    pub reference_geometry_ids: Vec<EntityId>,
+    pub reference_point_ids: Vec<EntityId>,
+    pub text_position: Point2,
+    pub measurement: f64,
+    pub formatted_text: TextValue,
+    pub dimension_style_id: Option<EntityId>,
+    pub text_style_id: Option<EntityId>,
+    pub tolerance_ids: Vec<EntityId>,
+    /// All fields after the entity ID, retained for version-specific inspection.
+    pub values: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DimensionToleranceEntity {
+    pub entity: EntityHeader,
+    /// Serialized DTV definition code retained until its enumeration is verified.
+    pub definition_value: i64,
+    pub upper_value: f64,
+    pub lower_value: f64,
+    /// Serialized formatting code retained until its enumeration is verified.
+    pub format_value: i64,
+    pub upper_text: TextValue,
+    pub lower_text: TextValue,
+    pub text_style_id: EntityId,
+    /// Text origin adjustment code: 1 (lower-left) through 9 (upper-right).
+    pub alignment: usize,
+    pub values: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LeaderPoint {
+    pub location: Point2,
+    pub elevation: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LeaderEntity {
+    pub graphic: GraphicHeader,
+    /// Serialized terminator code retained until its enumeration is verified.
+    pub arrow_type: i64,
+    pub arrow_size: f64,
+    pub points: Vec<LeaderPoint>,
+    pub values: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContourEntity {
+    pub graphic: GraphicHeader,
+    pub closed: bool,
+    /// Serialized contour direction code retained without guessing clockwise/counter-clockwise.
+    pub orientation: i64,
+    pub component_ids: Vec<EntityId>,
+    pub values: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HatchEntity {
+    pub graphic: GraphicHeader,
+    pub reference_point: Point2,
+    pub angle: f64,
+    pub spacing: f64,
+    /// Ordered outer loop followed by zero or more inner loops, populated from PFA.
+    pub boundary_loop_ids: Vec<EntityId>,
+    pub values: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HatchAssociationEntity {
+    pub entity: EntityHeader,
+    pub property_ids: Vec<EntityId>,
+    pub hatch_id: EntityId,
+    pub outer_loop_id: EntityId,
+    pub inner_loop_ids: Vec<EntityId>,
+    pub values: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SymbolEntity {
+    pub entity: EntityHeader,
+    pub component_ids: Vec<EntityId>,
     pub values: Vec<Vec<u8>>,
 }
 
@@ -320,11 +514,13 @@ pub enum SemanticEntity {
     BSpline(BSplineEntity),
     Circle(CircleEntity),
     Text(TextEntity),
-    Dimension(StructuredEntity),
-    DimensionTolerance(StructuredEntity),
-    Leader(StructuredEntity),
-    Hatch(StructuredEntity),
-    Symbol(StructuredEntity),
+    Dimension(DimensionEntity),
+    DimensionTolerance(DimensionToleranceEntity),
+    Leader(LeaderEntity),
+    Contour(ContourEntity),
+    Hatch(HatchEntity),
+    HatchAssociation(HatchAssociationEntity),
+    Symbol(SymbolEntity),
     Property(PropertyEntity),
     Assembly(AssemblyEntity),
     Unsupported(UnsupportedEntity),
@@ -335,16 +531,18 @@ impl SemanticEntity {
         match self {
             Self::Point(value) => &value.entity,
             Self::Line(value) => &value.graphic.entity,
-            Self::Arc(value) => &value.graphic.entity,
-            Self::Fillet(value) => &value.graphic.entity,
+            Self::Arc(value) => &value.entity,
+            Self::Fillet(value) => &value.entity,
             Self::BSpline(value) => &value.entity,
             Self::Circle(value) => &value.graphic.entity,
             Self::Text(value) => &value.graphic.entity,
-            Self::Dimension(value)
-            | Self::DimensionTolerance(value)
-            | Self::Leader(value)
-            | Self::Hatch(value)
-            | Self::Symbol(value) => &value.entity,
+            Self::Dimension(value) => &value.entity,
+            Self::DimensionTolerance(value) => &value.entity,
+            Self::Leader(value) => &value.graphic.entity,
+            Self::Contour(value) => &value.graphic.entity,
+            Self::Hatch(value) => &value.graphic.entity,
+            Self::HatchAssociation(value) => &value.entity,
+            Self::Symbol(value) => &value.entity,
             Self::Property(value) => &value.entity,
             Self::Assembly(value) => &value.entity,
             Self::Unsupported(value) => &value.entity,
@@ -372,11 +570,13 @@ impl SemanticEntity {
             Self::BSpline(_) => "BSPL",
             Self::Circle(_) => "CIR",
             Self::Text(_) => "TEX",
-            Self::Dimension(value)
-            | Self::DimensionTolerance(value)
-            | Self::Leader(value)
-            | Self::Hatch(value)
-            | Self::Symbol(value) => &value.mi_type,
+            Self::Dimension(value) => &value.mi_type,
+            Self::DimensionTolerance(_) => "DTV",
+            Self::Leader(_) => "LED",
+            Self::Contour(_) => "COC",
+            Self::Hatch(_) => "HAT",
+            Self::HatchAssociation(_) => "PFA",
+            Self::Symbol(_) => "SYML",
             Self::Property(value) => &value.mi_type,
             Self::Assembly(_) => "ASSE",
             Self::Unsupported(value) => &value.mi_type,

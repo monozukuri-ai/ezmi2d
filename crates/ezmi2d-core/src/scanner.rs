@@ -555,15 +555,27 @@ mod tests {
 
     #[test]
     fn detects_compression_candidates_without_claiming_bi() {
-        let info = detect_format(&[0x78, 0x9c, 0x03, 0x00]).unwrap();
-        assert_eq!(info.kind, MiFormatKind::CompressedCandidate);
-        assert_eq!(info.compression, Some(CompressionKind::Zlib));
-        assert!(matches!(
-            scan(&[0x78, 0x9c, 0x03, 0x00], ScanOptions::default()),
-            Err(MiError::UnsupportedCompression {
-                compression: "zlib"
-            })
-        ));
+        for (candidate, compression, name) in [
+            (&[0x78, 0x9c, 0x03, 0x00][..], CompressionKind::Zlib, "zlib"),
+            (
+                &[0x1f, 0x9d, 0x90, 0x00][..],
+                CompressionKind::UnixCompress,
+                "unix_compress",
+            ),
+            (
+                &[0x1f, 0x1e, 0x00, 0x00][..],
+                CompressionKind::UnixPack,
+                "unix_pack",
+            ),
+        ] {
+            let info = detect_format(candidate).unwrap();
+            assert_eq!(info.kind, MiFormatKind::CompressedCandidate);
+            assert_eq!(info.compression, Some(compression));
+            assert!(matches!(
+                scan(candidate, ScanOptions::default()),
+                Err(MiError::UnsupportedCompression { compression }) if compression == name
+            ));
+        }
     }
 
     #[test]

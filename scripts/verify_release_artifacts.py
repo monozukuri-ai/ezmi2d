@@ -44,7 +44,10 @@ SDIST_FILES = {
     "fuzz/Cargo.toml",
     "fuzz/fuzz_targets/raw_scan.rs",
     "fuzz/fuzz_targets/semantic_read.rs",
+    "samples/README.md",
+    "samples/manifest.toml",
     "scripts/check_release_version.py",
+    "scripts/audit_semantics.py",
     "scripts/fetch_external_samples.sh",
     "scripts/smoke_installed_package.py",
     "scripts/verify_release_artifacts.py",
@@ -52,6 +55,7 @@ SDIST_FILES = {
     "tests/data/minimal.mi",
     "tests/data/phase5.mi",
     "tests/data/text-utf8.mi",
+    "tests/python/test_semantic_audit.py",
 }
 
 

@@ -1,6 +1,6 @@
 [project]
 name = "ezmi2d"
-version = "0.1.0"
+version = "0.2.0"
 description = "Lossless reader for PTC Creo Elements/Direct Drafting MI files powered by Rust"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -68,6 +68,7 @@ include = [
     { path = "scripts/fetch_external_samples.sh", format = "sdist" },
     { path = "scripts/*.py", format = "sdist" },
     { path = "tests/data/*.mi", format = "sdist" },
+    { path = "tests/python/test_semantic_audit.py", format = "sdist" },
 ]
 
 [tool.pytest.ini_options]

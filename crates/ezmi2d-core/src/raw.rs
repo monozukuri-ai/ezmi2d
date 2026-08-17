@@ -27,6 +27,8 @@ pub enum CompressionKind {
     Zlib,
     Gzip,
     Zip,
+    UnixCompress,
+    UnixPack,
 }
 
 impl CompressionKind {
@@ -35,6 +37,8 @@ impl CompressionKind {
             Self::Zlib => "zlib",
             Self::Gzip => "gzip",
             Self::Zip => "zip",
+            Self::UnixCompress => "unix_compress",
+            Self::UnixPack => "unix_pack",
         }
     }
 }

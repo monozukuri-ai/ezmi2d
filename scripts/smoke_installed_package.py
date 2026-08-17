@@ -24,16 +24,27 @@ PACKAGE_FILES = {
     "py.typed",
 }
 PUBLIC_NAMES = {
+    "Affine2D",
     "Arc",
     "Assembly",
     "BSpline",
     "Circle",
+    "Contour",
     "Dimension",
+    "DimensionTextAttributeProperty",
+    "DimensionTextFormatProperty",
     "Document",
     "Fillet",
     "Hatch",
+    "HatchAssociation",
+    "HatchPatternLine",
+    "HatchPatternProperty",
+    "InstancePathStep",
     "Leader",
+    "LeaderPoint",
     "Line",
+    "PartOccurrence",
+    "PlacedGraphic",
     "Point",
     "ScanLimits",
     "Symbol",
@@ -68,6 +79,8 @@ def main() -> int:
     assert raw.source_view.readonly
     assert isinstance(point, ezmi2d.Point)
     assert point.location == ezmi2d.Vec2(1.25, 2.5)
+    transform = ezmi2d.Affine2D(a=1.0, b=0.0, c=0.0, d=1.0, tx=3.0, ty=4.0)
+    assert transform.transform_point(point.location) == ezmi2d.Vec2(4.25, 6.5)
 
     compressed = gzip.compress(source, mtime=0)
     packed = ezmi2d.read(compressed)

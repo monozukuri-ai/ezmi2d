@@ -50,12 +50,23 @@ def test_draw_rejects_unverified_arc_orientation_without_guessing() -> None:
     drawing = ezmi2d.read(DATA / "geometry.mi")
     arc = drawing.query("ARC")[0]
     assert isinstance(arc, ezmi2d.Arc)
-    altered = replace(arc, orientation=1)
+    altered = replace(arc, orientation=1, ccw=None)
     part = replace(drawing.parts[0], entities=(altered,))
 
     with pytest.warns(RuntimeWarning, match="unverified orientation"):
         axes = ezmi2d.draw(part)
     assert len(axes.collections) == 0
+    plt.close(axes.figure)
+
+
+def test_draw_can_expand_shared_assembly_instances() -> None:
+    drawing = ezmi2d.read(DATA / "phase5.mi")
+    axes = ezmi2d.draw(drawing, curve_segments=8, expand_instances=True)
+
+    fillets = next(artist for artist in axes.collections if artist.get_label() == "FIL")
+    assert len(fillets.get_segments()) == 2
+    assert tuple(fillets.get_segments()[0][0]) == pytest.approx((1.0, 0.0))
+    assert tuple(fillets.get_segments()[1][0]) == pytest.approx((11.0, 0.0))
     plt.close(axes.figure)
 
 
