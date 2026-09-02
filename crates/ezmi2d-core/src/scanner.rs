@@ -558,11 +558,6 @@ mod tests {
         for (candidate, compression, name) in [
             (&[0x78, 0x9c, 0x03, 0x00][..], CompressionKind::Zlib, "zlib"),
             (
-                &[0x1f, 0x9d, 0x90, 0x00][..],
-                CompressionKind::UnixCompress,
-                "unix_compress",
-            ),
-            (
                 &[0x1f, 0x1e, 0x00, 0x00][..],
                 CompressionKind::UnixPack,
                 "unix_pack",
@@ -576,6 +571,17 @@ mod tests {
                 Err(MiError::UnsupportedCompression { compression }) if compression == name
             ));
         }
+
+        // unix compress(1) streams are decoded since 0.2.1; a stream whose
+        // payload is not MI text is rejected as invalid instead.
+        let candidate: &[u8] = &[0x1f, 0x9d, 0x90, 0x00];
+        let info = detect_format(candidate).unwrap();
+        assert_eq!(info.kind, MiFormatKind::CompressedCandidate);
+        assert_eq!(info.compression, Some(CompressionKind::UnixCompress));
+        assert!(matches!(
+            scan(candidate, ScanOptions::default()),
+            Err(MiError::InvalidCompressedStream { compression, .. }) if compression == "unix_compress"
+        ));
     }
 
     #[test]

@@ -80,11 +80,28 @@ def test_gzip_container_is_decoded_without_losing_either_byte_stream() -> None:
     assert b"".join(line.raw_bytes for line in result.lines) == data
 
 
+def test_unix_compress_container_is_decoded_and_validated() -> None:
+    compressed = bytes.fromhex("1f9d9023fcc8503022a01f05")
+
+    candidate = ezmi2d.detect_format(compressed)
+    assert candidate.kind == "compressed_candidate"
+    assert candidate.compression == "unix_compress"
+
+    result = ezmi2d.scan(compressed)
+    assert result.format == ezmi2d.MiFormatInfo(
+        kind="mi_text", compression="unix_compress", first_section=2, utf8_bom=False
+    )
+    assert result.container_bytes == compressed
+    assert result.source_bytes == b"#~2\n##~~\n"
+
+    with pytest.raises(ezmi2d.InvalidMiError, match="invalid unix_compress"):
+        ezmi2d.scan(bytes.fromhex("1f9d9000"))
+
+
 def test_unverified_compression_families_remain_unsupported() -> None:
     candidates = {
         "zlib": bytes.fromhex("789c0300"),
         "zip": bytes.fromhex("504b03040000"),
-        "unix_compress": bytes.fromhex("1f9d9000"),
         "unix_pack": bytes.fromhex("1f1e0000"),
     }
     for compression, candidate in candidates.items():
