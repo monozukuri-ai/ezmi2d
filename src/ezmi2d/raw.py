@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+import struct
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, TypeAlias, cast
@@ -206,7 +207,7 @@ class RawScan:
     """Complete result of one bounded, byte-preserving logical MI scan."""
 
     format: MiFormatInfo
-    lines: tuple[RawLine, ...]
+    lines: Sequence[RawLine]
     sections: tuple[RawSection, ...]
     records: tuple[RawRecord, ...]
     diagnostics: tuple[Diagnostic, ...]
@@ -292,7 +293,7 @@ def _scan_from_core(data: bytes, row: Mapping[str, Any]) -> RawScan:
     source_view = memoryview(logical_data)
     container_view = memoryview(data)
     records = tuple(_record_from_core(source_view, _mapping(item)) for item in row["records"])
-    lines = tuple(_line_from_core(source_view, _mapping(item)) for item in row["lines"])
+    lines = _LazyLines(source_view, bytes(row["lines_packed"]))
     sections = tuple(
         _section_from_core(source_view, records, _mapping(item)) for item in row["sections"]
     )
@@ -323,6 +324,74 @@ def _scan_from_core(data: bytes, row: Mapping[str, Any]) -> RawScan:
         _source_view=source_view,
         _container_view=container_view,
     )
+
+
+_LINE_RECORD = struct.Struct("<IIIIIBBHI")
+_LINE_ENDINGS = ("lf", "crlf", "cr", "none")
+_LINE_KINDS = ("blank", "data", "section_marker", "entity_terminator", "file_terminator")
+_LINE_NO_SECTION = 0xFFFF_FFFF
+
+
+class _LazyLines(Sequence[RawLine]):
+    """コアから固定長バイナリで受け取った行テーブルの遅延ビュー。
+
+    行ごとのdict/データクラスを前もって実体化すると、70万行規模の圧縮MI
+    (展開4MB超)でスキャンだけで1GB超のRSSになる。アクセスされた行だけを
+    RawLineへ復元する。
+    """
+
+    __slots__ = ("_buffer", "_source")
+
+    def __init__(self, source: memoryview, buffer: bytes) -> None:
+        if len(buffer) % _LINE_RECORD.size:
+            raise RuntimeError("native line table size is not a record multiple")
+        self._buffer = buffer
+        self._source = source
+
+    def __len__(self) -> int:
+        return len(self._buffer) // _LINE_RECORD.size
+
+    def _make(self, index: int) -> RawLine:
+        (
+            number,
+            span_offset,
+            span_length,
+            content_offset,
+            content_length,
+            ending_code,
+            kind_code,
+            _reserved,
+            section_number,
+        ) = _LINE_RECORD.unpack_from(self._buffer, index * _LINE_RECORD.size)
+        span = SourceSpan(
+            offset=span_offset, length=span_length, start_line=number, end_line=number
+        )
+        content_span = SourceSpan(
+            offset=content_offset,
+            length=content_length,
+            start_line=number,
+            end_line=number,
+        )
+        return RawLine(
+            index=index,
+            number=number,
+            span=span,
+            content_span=content_span,
+            ending=cast(LineEndingKind, _LINE_ENDINGS[ending_code]),
+            kind=cast(LineKind, _LINE_KINDS[kind_code]),
+            section_number=(None if section_number == _LINE_NO_SECTION else section_number),
+            _raw_view=_slice(self._source, span),
+            _content_view=_slice(self._source, content_span),
+        )
+
+    def __getitem__(self, index):  # type: ignore[override]
+        if isinstance(index, slice):
+            return tuple(self._make(i) for i in range(*index.indices(len(self))))
+        if index < 0:
+            index += len(self)
+        if not 0 <= index < len(self):
+            raise IndexError(index)
+        return self._make(index)
 
 
 def _line_from_core(source: memoryview, row: Mapping[str, Any]) -> RawLine:

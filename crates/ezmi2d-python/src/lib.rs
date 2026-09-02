@@ -4,9 +4,9 @@ use ezmi2d_core::{
     detect_format, read_input_with_encoding, scan_input, ArcEntity, AssemblyInstance,
     BSplineEntity, Bounds2, CircleEntity, ContourEntity, Diagnostic, DimensionEntity,
     DimensionToleranceEntity, EncodingInfo, GlobalInfo, GraphicHeader, HatchAssociationEntity,
-    HatchEntity, LeaderEntity, LineEntity, MiError as CoreMiError, MiFormatInfo, Part, Point2,
-    RawDocument, RawLine, RawRecord, RawSection, ScanOptions, SemanticDocument, SemanticEntity,
-    SourceSpan, SymbolEntity, TextEntity, TextValue,
+    HatchEntity, LeaderEntity, LineEnding, LineEntity, MiError as CoreMiError, MiFormatInfo, Part,
+    Point2, RawDocument, RawLineKind, RawRecord, RawSection, ScanOptions, SemanticDocument,
+    SemanticEntity, SourceSpan, SymbolEntity, TextEntity, TextValue,
 };
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyValueError};
@@ -120,11 +120,7 @@ fn document_dict<'py>(
     newline.set_item("unterminated", document.newlines.unterminated)?;
     result.set_item("newlines", newline)?;
 
-    let lines = PyList::empty(py);
-    for line in &document.lines {
-        lines.append(line_dict(py, line)?)?;
-    }
-    result.set_item("lines", lines)?;
+    result.set_item("lines_packed", packed_lines(py, document))?;
 
     let records = PyList::empty(py);
     for record in &document.records {
@@ -724,16 +720,38 @@ fn format_dict(py: Python<'_>, format: MiFormatInfo) -> PyResult<Bound<'_, PyDic
     Ok(result)
 }
 
-fn line_dict<'py>(py: Python<'py>, line: &RawLine) -> PyResult<Bound<'py, PyDict>> {
-    let result = PyDict::new(py);
-    result.set_item("index", line.index)?;
-    result.set_item("number", line.number)?;
-    result.set_item("span", span_dict(py, line.span)?)?;
-    result.set_item("content_span", span_dict(py, line.content_span)?)?;
-    result.set_item("ending", line.ending.as_str())?;
-    result.set_item("kind", line.kind.as_str())?;
-    result.set_item("section_number", line.kind.section_number())?;
-    Ok(result)
+/// 行テーブルは1行28バイトの固定長リトルエンディアン列にパックして返す。
+/// (number, span_offset, span_length, content_offset, content_length: u32×5、
+///  ending: u8、kind: u8、予約: u16、section_number: u32(なし=u32::MAX))
+/// 行ごとのPyDict実体化は、70万行規模の圧縮MI(展開4MB超)で1GB超のRSSを
+/// 生んでいた。Python側はSequenceとして遅延復元する。
+fn packed_lines<'py>(py: Python<'py>, document: &RawDocument) -> Bound<'py, PyBytes> {
+    const STRIDE: usize = 28;
+    let mut buffer = Vec::with_capacity(document.lines.len() * STRIDE);
+    let clamp = |value: usize| u32::try_from(value).unwrap_or(u32::MAX);
+    for line in &document.lines {
+        buffer.extend_from_slice(&clamp(line.number).to_le_bytes());
+        buffer.extend_from_slice(&clamp(line.span.offset).to_le_bytes());
+        buffer.extend_from_slice(&clamp(line.span.length).to_le_bytes());
+        buffer.extend_from_slice(&clamp(line.content_span.offset).to_le_bytes());
+        buffer.extend_from_slice(&clamp(line.content_span.length).to_le_bytes());
+        buffer.push(match line.ending {
+            LineEnding::Lf => 0,
+            LineEnding::Crlf => 1,
+            LineEnding::Cr => 2,
+            LineEnding::None => 3,
+        });
+        buffer.push(match line.kind {
+            RawLineKind::Blank => 0,
+            RawLineKind::Data => 1,
+            RawLineKind::SectionMarker(_) => 2,
+            RawLineKind::EntityTerminator => 3,
+            RawLineKind::FileTerminator => 4,
+        });
+        buffer.extend_from_slice(&0u16.to_le_bytes());
+        buffer.extend_from_slice(&line.kind.section_number().unwrap_or(u32::MAX).to_le_bytes());
+    }
+    PyBytes::new(py, &buffer)
 }
 
 fn record_dict<'py>(py: Python<'py>, record: &RawRecord) -> PyResult<Bound<'py, PyDict>> {
