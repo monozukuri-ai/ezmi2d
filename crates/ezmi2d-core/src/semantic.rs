@@ -67,6 +67,13 @@ pub fn read_input_with_encoding<'a>(
     })
 }
 
+/// Section `#~31` holds the preview pixmap of the drawing (`PXMAP`), after the global
+/// section. The table of contents lists no entity number for it and the numbering of
+/// the entities starts in `#~41`: the field after `PXMAP` is not an entity ID. Read as
+/// one, its value 1 took the place of the first property, so every pointer to that
+/// property (the text attribute of dimensions, for one) was left unresolved.
+const PIXMAP_SECTION: u32 = 31;
+
 fn read_scanned_with_encoding(
     data: &[u8],
     raw: RawDocument,
@@ -83,6 +90,10 @@ fn read_scanned_with_encoding(
         let Some(mi_type) = record.record_type.as_deref() else {
             continue;
         };
+        if record.section_number == PIXMAP_SECTION {
+            // Not an addressable entity: the record stays in the raw document.
+            continue;
+        }
         let part_index = section_parts.get(record.section_index).copied().flatten();
         if let Some(entity) = parse_entity(
             data,
@@ -843,6 +854,9 @@ fn parse_property(
                 fields.len().saturating_sub(3)
             ));
         }
+        let definition_values = (6..fields.len())
+            .map(|index| required_f64(fields, index, "DTA numeric definition"))
+            .collect::<Result<Vec<_>, _>>()?;
         Some(DimensionTextAttributeProperty {
             font_name: decoded_text_field(
                 data,
@@ -874,9 +888,16 @@ fn parse_property(
                 "DTA symbol font",
             )
             .expect("DTA field count was checked"),
-            definition_values: (6..fields.len())
-                .map(|index| required_f64(fields, index, "DTA numeric definition"))
-                .collect::<Result<Vec<_>, _>>()?,
+            size: definition_values
+                .get(2)
+                .copied()
+                .filter(|size| size.is_finite() && *size > 0.0),
+            relative_size: match definition_values.get(1) {
+                Some(mode) if *mode == 0.0 => Some(false),
+                Some(mode) if *mode == 1.0 => Some(true),
+                _ => None,
+            },
+            definition_values,
         })
     } else {
         None
@@ -967,11 +988,9 @@ fn parse_dimension_tolerance(
     if fields.len() != 10 {
         return Err(format!("DTV has {} fields; expected 10", fields.len()));
     }
-    let alignment = required_usize(fields, 9, "tolerance text alignment")?;
-    if !(1..=9).contains(&alignment) {
-        return Err(format!(
-            "tolerance text alignment {alignment} is outside 1 through 9"
-        ));
+    let text_attribute_id = required_u64(fields, 9, "tolerance text attribute pointer")?;
+    if text_attribute_id == 0 {
+        return Err("tolerance text attribute pointer is zero".to_owned());
     }
     Ok(SemanticEntity::DimensionTolerance(
         DimensionToleranceEntity {
@@ -1001,7 +1020,7 @@ fn parse_dimension_tolerance(
             )
             .expect("DTV field count was checked"),
             text_style_id: required_u64(fields, 8, "tolerance text style pointer")?,
-            alignment,
+            text_attribute_id,
             values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
         },
     ))
@@ -1229,6 +1248,22 @@ fn parse_dimension(
         measurement_index - 2,
         "dimension text style pointer",
     )?;
+    let text_attribute_id = required_u64(
+        fields,
+        measurement_index - 1,
+        "dimension text attribute pointer",
+    )?;
+    // The text position is followed by two vectors: the extent of the text box along
+    // the text and across it.
+    let position_index = content_start + position_offset;
+    let text_extent = Point2::new(
+        required_f64(fields, position_index + 2, "dimension text extent x")?,
+        required_f64(fields, position_index + 3, "dimension text extent y")?,
+    );
+    let text_up_extent = Point2::new(
+        required_f64(fields, position_index + 4, "dimension text up extent x")?,
+        required_f64(fields, position_index + 5, "dimension text up extent y")?,
+    );
     Ok(SemanticEntity::Dimension(DimensionEntity {
         entity,
         mi_type: mi_type.to_owned(),
@@ -1268,6 +1303,9 @@ fn parse_dimension(
         .expect("dimension field count was checked"),
         dimension_style_id: (style_id != 0).then_some(style_id),
         text_style_id: (text_style_id != 0).then_some(text_style_id),
+        text_attribute_id: (text_attribute_id != 0).then_some(text_attribute_id),
+        text_extent,
+        text_up_extent,
         tolerance_ids: Vec::new(),
         values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
     }))
@@ -2261,9 +2299,13 @@ fn resolve_references(
                         diagnostics,
                     );
                 }
-                for style_id in [dimension.dimension_style_id, dimension.text_style_id]
-                    .into_iter()
-                    .flatten()
+                for style_id in [
+                    dimension.dimension_style_id,
+                    dimension.text_style_id,
+                    dimension.text_attribute_id,
+                ]
+                .into_iter()
+                .flatten()
                 {
                     validate_property_pointer(
                         dimension.entity.id,
@@ -2288,15 +2330,17 @@ fn resolve_references(
                     });
             }
             SemanticEntity::DimensionTolerance(tolerance) => {
-                validate_property_pointer(
-                    tolerance.entity.id,
-                    tolerance.text_style_id,
-                    tolerance.entity.raw_record_index,
-                    &property_ids,
-                    entity_index,
-                    raw,
-                    diagnostics,
-                );
+                for style_id in [tolerance.text_style_id, tolerance.text_attribute_id] {
+                    validate_property_pointer(
+                        tolerance.entity.id,
+                        style_id,
+                        tolerance.entity.raw_record_index,
+                        &property_ids,
+                        entity_index,
+                        raw,
+                        diagnostics,
+                    );
+                }
             }
             SemanticEntity::Leader(leader) => {
                 validate_property(

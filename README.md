@@ -126,7 +126,8 @@ ezmi2d inspect drawing.mi --json --records
 - typed `P`, `LIN`, `ARC`, `FIL`, `BSPL`, `CIR`, and `TEX` entities; point references are resolved
 - De Boor evaluation for `BSPL`, including rational weights when a verified layout records them
 - typed dimension (`DANG`, `DCHMF`, `DDIA`, `DRAD`, `DSGL`) references, measurement,
-  formatted text, placement, DDA/DTF style, and linked `DTV` tolerances
+  formatted text, placement, DDA/DTF style, the DTA text attribute with the text height
+  (`text_height`), the stored text box, and linked `DTV` tolerances
 - drawable `LED` vertices, `SYML` components, and associative `HAT` patterns/boundaries through
   typed `COC`, `PFA`, and `HAPP` records
 - typed `Affine2D`, nested/shared `ASSE` occurrence traversal, composed child-to-parent transforms,

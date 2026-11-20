@@ -137,14 +137,15 @@ Every entity derives from the frozen `MiEntity` data model and retains `id`, `mi
 | `BSPL` | `BSpline` | order/degree, presence-aware flags/weights, controls, knots, samples, `evaluate()` |
 | `CIR` | `Circle` | resolved center/circumference and radius |
 | `TEX` | `Text` | 3x3 transform, origin, rotation, width factor, mirror, alignment, fonts, multiline content |
-| `DANG`, `DCHMF`, `DDIA`, `DRAD`, `DSGL` | `Dimension` | resolved geometry/point references, text position, measurement, formatted text, DDA/DTF styles, DTV references |
-| `DTV` | `DimensionTolerance` | upper/lower values and text, DTF style, alignment |
+| `DANG`, `DCHMF`, `DDIA`, `DRAD`, `DSGL` | `Dimension` | resolved geometry/point references, text position, measurement, formatted text, DDA/DTF styles, DTA text attribute (`text_attribute`, `text_height`), stored text box (`text_extent`, `text_up_extent`, `text_rotation`), DTV references |
+| `DTV` | `DimensionTolerance` | upper/lower values and text, DTF style, DTA text attribute (`text_attribute`, `text_height(main_text_height)`) |
 | `LED` | `Leader` | graphic attributes, arrow code/size, ordered 2D vertices and retained elevations |
 | `COC` | `Contour` | ordered graphic components, closed flag, raw orientation |
 | `HAT` / `PFA` | `Hatch` / `HatchAssociation` | pattern origin/angle/spacing and resolved outer/inner COC loops |
 | `SYML` | `Symbol` | three ordered, resolved graphic components |
 | `PSTAT`, `ASSP` | specialized property types | part status and strictly decoded associated strings |
-| `DTA`, `DTF`, `DDA`, `DLA`, `DAF` | dimension property subclasses | fonts or typed numeric tables; unverified enumerations remain ordered values |
+| `DTA` | `DimensionTextAttributeProperty` | fonts, `size` (character height, or a factor of the main text when `relative_size` is true); the other numeric values remain ordered values |
+| `DTF`, `DDA`, `DLA`, `DAF` | dimension property subclasses | typed numeric tables; unverified enumerations remain ordered values |
 | `HAPP` | `HatchPatternProperty` | ordered offset/distance/angle/color/linetype sub-patterns |
 | `ASSE` | `Assembly` | property IDs, definition part, child instances, 3x3 transforms |
 | other addressable records | `UnsupportedEntity` | ID, ownership, and complete raw record |

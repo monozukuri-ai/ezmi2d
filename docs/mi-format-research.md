@@ -215,6 +215,38 @@ Phase 5 では、正式な field 名が得られていない部分を raw bytes 
 - `ASSE` の可変 property prefix、子 assembly ID、member IDs、serialized 3x3 transform、part 対応を復元した。製品サンプルの 25 parts / 24 instances は単一 root に解決され、`DOCU_SHEET` association から sheet part 1 件を同定した。
 - 自作 fixture は root → 2 sheets → shared leaf という構造を持ち、nested/shared part、異なる instance transform、multiple sheets を regression test にする。
 
+### 5.2 寸法の文字の大きさ(DTA)と文字の枠
+
+寸法レコード(`DANG` / `DCHMF` / `DDIA` / `DRAD` / `DSGL`)の、文字の位置から測定値までの 13 欄を、
+製品サンプル(MI 3.40、寸法 46 個・公差 10 個)で突き合わせた。field 名の一次資料は得られていないので、
+下は観測された規則である。MI 2.40〜2.80 のファイルでも欄の並びは同じだった。
+
+| 位置(文字の位置 x を 0 として) | 内容 | 根拠(製品サンプル) |
+|---|---|---|
+| 0, 1 | 文字の位置 | 既存の解釈。下の 2 つのベクトルの枠の中心にあたる |
+| 2, 3 | 文字の枠の、文字の向きのベクトル(長さ = 枠の幅) | 46 個すべてで次のベクトルと直交 |
+| 4, 5 | 文字の枠の、文字の高さ方向のベクトル(長さ = 枠の高さ) | 公差の無い 36 個中 35 個で、長さが DTA の大きさと一致 |
+| 9 | DDA の pointer | 既存の解釈 |
+| 11 | DTF の pointer | 既存の解釈 |
+| 12 | **DTA の pointer(主の文字の文字属性)** | 46 個すべてで DTA レコードの ID |
+| 13 | 測定値 | 既存の解釈 |
+
+`DTA` の数値は、フォント 3 つの後ろが `[0, 相対の印, 大きさ, 比, 色, …]` の順に並ぶ。
+
+- 相対の印が 0 のとき、大きさは図面の単位の文字高。寸法の主の文字が指す DTA は 46 個すべてこの形
+- 相対の印が 1 のとき、大きさは 1 や 0.6 といった倍率。公差の文字に使われ、公差 2 行の間隔が
+  「主の文字高 × 倍率 × 1.5」に一致する(主 0.03・倍率 0.6 で間隔 0.027)
+- 枠の高さは、公差を重ねた寸法で文字高の 1.5〜3 倍になる。枠は中身の外接であって文字高ではないので、
+  文字高は DTA から取る
+
+`DTV` の最後の欄は、これまで「文字の基準点の位置 1〜9」と読んでいたが、10 個すべてで DTA レコードの ID
+だった(公差の文字の文字属性。倍率 0.6 が 7 個、主の文字と同じ文字高が 3 個)。DTA の ID は property の
+先頭に並ぶので 9 以下に収まりやすく、範囲の検査を通っていた。1〜9 の検査は外し、`text_attribute_id` として
+公開する。`alignment` は同じ値を返す旧名として残す。
+
+測定値より後ろ(矢印・寸法線・寸法補助線の座標と DAF / DLA の pointer が、文字の位置を原点にした
+局所座標で並ぶ)は未解釈のまま `values` に残している。
+
 各 Phase 5 record family には正常 fixture と短縮・破損 fixture があり、破損時も `UnsupportedEntity.raw_record` から payload を取得できる。つまり typed decoder の失敗によって addressable record を黙って捨てない。
 
 このサンプルは bundle 内の製品生成圧縮 MI であり、別名保存した standalone `.bi` ではない。したがって現実装が保証する範囲は **gzip magic を持ち、展開後が MI text である入力** である。zlib wrapper、ZIP、UNIX `compress`、UNIX `pack` は signature を検出して unsupported error にし、未検証 decoder へフォールバックしない。同一図面を Drafting から standalone `.mi` / `.bi` へ保存する相互運用試験は引き続き必要である。

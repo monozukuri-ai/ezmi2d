@@ -134,9 +134,35 @@ def audit(inputs: Sequence[Path]) -> dict[str, Any]:
                 ] += 1
                 dimension_stats["tolerance_counts"][len(entity.tolerance_ids)] += 1
                 dimension_stats["decoded_text"][entity.formatted_text is not None] += 1
+                # Evidence for the text attribute pointer and the stored text box: the
+                # pointer names a DTA with an absolute size, the two extents are at a
+                # right angle, and a text without a tolerance is as high as its size.
+                dimension_stats["text_attribute_model"][type(entity.text_attribute).__name__] += 1
+                dimension_stats["text_height_present"][entity.text_height is not None] += 1
+                along, across = entity.text_extent, entity.text_up_extent
+                width = (along.x**2 + along.y**2) ** 0.5
+                height = (across.x**2 + across.y**2) ** 0.5
+                dimension_stats["text_box_right_angle"][
+                    abs(along.x * across.x + along.y * across.y)
+                    <= 1e-9 * max(width * height, 1e-300)
+                ] += 1
+                if entity.text_height is not None and not entity.tolerance_ids:
+                    dimension_stats["plain_text_box_height_over_size"][
+                        round(height / entity.text_height, 2)
+                    ] += 1
             elif isinstance(entity, ezmi2d.DimensionTolerance):
                 annotation_stats["dtv_decoded_text"][
                     entity.upper_text is not None and entity.lower_text is not None
+                ] += 1
+                annotation_stats["dtv_text_attribute_model"][
+                    type(entity.text_attribute).__name__
+                ] += 1
+                attribute = entity.text_attribute
+                annotation_stats["dtv_text_size"][
+                    (
+                        getattr(attribute, "relative_size", None),
+                        getattr(attribute, "size", None),
+                    )
                 ] += 1
             elif isinstance(entity, ezmi2d.Leader):
                 annotation_stats["leader_vertex_counts"][len(entity.vertices)] += 1

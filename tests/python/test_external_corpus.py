@@ -251,6 +251,47 @@ def test_product_generated_compressed_mi_matches_its_logical_payload() -> None:
         and tolerance.lower_text is not None
         for tolerance in packed.dimension_tolerances
     )
+    # Every dimension names the DTA of its main text between the DTF pointer and the
+    # measurement, and that DTA states a length, not a factor.
+    assert all(
+        isinstance(dimension.text_attribute, ezmi2d.DimensionTextAttributeProperty)
+        and dimension.text_attribute.relative_size is False
+        and dimension.text_height == dimension.text_attribute.size
+        for dimension in packed.dimensions
+    )
+    assert Counter(round(dimension.text_height, 6) for dimension in packed.dimensions) == {
+        0.09: 38,
+        0.03: 5,
+        0.009: 3,
+    }
+
+    def box(dimension: ezmi2d.Dimension) -> tuple[float, float, float]:
+        along, across = dimension.text_extent, dimension.text_up_extent
+        return (
+            math.hypot(along.x, along.y),
+            math.hypot(across.x, across.y),
+            along.x * across.x + along.y * across.y,
+        )
+
+    # The text position is followed by the extents of the text box along and across
+    # the text: always at a right angle, and for a text without a tolerance as high as
+    # the size its DTA states (one text of this drawing is 2.6 times as high).
+    assert all(abs(box(dimension)[2]) < 1e-12 for dimension in packed.dimensions)
+    plain = [dimension for dimension in packed.dimensions if not dimension.tolerance_ids]
+    assert len(plain) == 36
+    assert (
+        sum(box(dimension)[1] == pytest.approx(dimension.text_height) for dimension in plain) == 35
+    )
+    # The last field of a DTV is the DTA of the tolerance text: a factor of the main
+    # text (seven at 0.6) or the same length as the main text (three limit pairs).
+    assert all(
+        isinstance(tolerance.text_attribute, ezmi2d.DimensionTextAttributeProperty)
+        for tolerance in packed.dimension_tolerances
+    )
+    assert Counter(
+        (tolerance.text_attribute.relative_size, round(tolerance.text_attribute.size, 6))
+        for tolerance in packed.dimension_tolerances
+    ) == {(True, 0.6): 7, (False, 0.09): 2, (False, 0.03): 1}
     assert all(
         len(leader.vertices) == 2
         and len(leader.points) == 2

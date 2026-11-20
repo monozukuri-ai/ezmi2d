@@ -384,6 +384,8 @@ fn entity_dict<'py>(py: Python<'py>, entity: &SemanticEntity) -> PyResult<Bound<
                     text_dict(py, &attribute.symbol_font_name)?,
                 )?;
                 value.set_item("definition_values", &attribute.definition_values)?;
+                value.set_item("size", attribute.size)?;
+                value.set_item("relative_size", attribute.relative_size)?;
                 result.set_item("dimension_text_attribute", value)?;
             } else {
                 result.set_item("dimension_text_attribute", py.None())?;
@@ -438,6 +440,9 @@ fn set_dimension_fields(
     result.set_item("formatted_text", text_dict(py, &value.formatted_text)?)?;
     result.set_item("dimension_style_id", value.dimension_style_id)?;
     result.set_item("text_style_id", value.text_style_id)?;
+    result.set_item("text_attribute_id", value.text_attribute_id)?;
+    result.set_item("text_extent", point_dict(py, &value.text_extent)?)?;
+    result.set_item("text_up_extent", point_dict(py, &value.text_up_extent)?)?;
     result.set_item("tolerance_ids", &value.tolerance_ids)?;
     result.set_item("values", byte_values(py, &value.values)?)?;
     Ok(())
@@ -455,7 +460,7 @@ fn set_dimension_tolerance_fields(
     result.set_item("upper_text", text_dict(py, &value.upper_text)?)?;
     result.set_item("lower_text", text_dict(py, &value.lower_text)?)?;
     result.set_item("text_style_id", value.text_style_id)?;
-    result.set_item("alignment", value.alignment)?;
+    result.set_item("text_attribute_id", value.text_attribute_id)?;
     result.set_item("values", byte_values(py, &value.values)?)?;
     Ok(())
 }

@@ -187,12 +187,21 @@ class AssociatedStringsProperty(Property):
 
 @dataclass(frozen=True, slots=True)
 class DimensionTextAttributeProperty(Property):
-    """DTA font fields plus version-specific numeric definition values."""
+    """DTA text attribute of a dimension or tolerance text: fonts and text size.
+
+    ``size`` is the third numeric value: the character height in drawing units, or,
+    when ``relative_size`` is true (the second numeric value is 1), a factor of the
+    main text of the dimension (0.6 for a tolerance at 60 %). Both are ``None`` when
+    the record does not state them. The other numeric values stay in
+    ``definition_values``; their meanings vary by MI version.
+    """
 
     font_name_value: TextValue
     alternate_font_name_value: TextValue
     symbol_font_name_value: TextValue
     definition_values: tuple[float, ...]
+    size: float | None = None
+    relative_size: bool | None = None
 
     @property
     def font_name(self) -> str | None:
@@ -592,6 +601,14 @@ class Dimension(StructuredEntity):
     text_style: Property | None
     tolerance_ids: tuple[int, ...]
     tolerances: tuple[DimensionTolerance | None, ...]
+    #: Pointer to the DTA text attribute (fonts and size) of the main text.
+    text_attribute_id: int | None = None
+    text_attribute: Property | None = None
+    #: Extent of the stored text box along the text (direction of the text, length =
+    #: width of the box, tolerances included) and across it (length = height of the
+    #: box). The text position is the middle of the box.
+    text_extent: Vec2 = Vec2(0.0, 0.0)
+    text_up_extent: Vec2 = Vec2(0.0, 0.0)
 
     @property
     def formatted_text(self) -> str | None:
@@ -600,6 +617,31 @@ class Dimension(StructuredEntity):
     @property
     def formatted_text_bytes(self) -> bytes:
         return self.formatted_text_value.raw_bytes
+
+    @property
+    def text_height(self) -> float | None:
+        """Character height of the main text in drawing units.
+
+        The size of the DTA text attribute the dimension points to. ``None`` when the
+        dimension names no such attribute or the attribute states a factor instead of
+        a length.
+        """
+        attribute = self.text_attribute
+        if not isinstance(attribute, DimensionTextAttributeProperty):
+            return None
+        if attribute.size is None or attribute.relative_size is not False:
+            return None
+        return attribute.size
+
+    @property
+    def text_rotation(self) -> float | None:
+        """Direction of the text in radians, from the stored text box.
+
+        ``None`` when the box has no extent along the text.
+        """
+        if self.text_extent.x == 0.0 and self.text_extent.y == 0.0:
+            return None
+        return math.atan2(self.text_extent.y, self.text_extent.x)
 
 
 @dataclass(frozen=True, slots=True)
@@ -612,7 +654,10 @@ class DimensionTolerance(StructuredEntity):
     lower_text_value: TextValue
     text_style_id: int
     text_style: Property | None
-    alignment: int
+    #: Pointer to the DTA text attribute (fonts and size) of the tolerance text: the
+    #: last field of the record.
+    text_attribute_id: int
+    text_attribute: Property | None = None
 
     @property
     def upper_text(self) -> str | None:
@@ -623,12 +668,28 @@ class DimensionTolerance(StructuredEntity):
         return self.lower_text_value.text
 
     @property
-    def horizontal_alignment(self) -> str:
-        return ("left", "center", "right")[(self.alignment - 1) % 3]
+    def alignment(self) -> int:
+        """Deprecated: the last field of the record, which is ``text_attribute_id``.
 
-    @property
-    def vertical_alignment(self) -> str:
-        return ("lower", "middle", "upper")[(self.alignment - 1) // 3]
+        Earlier versions read it as a text alignment code of 1 through 9. In every
+        tolerance of the corpus it is the ID of a DTA record.
+        """
+        return self.text_attribute_id
+
+    def text_height(self, main_text_height: float | None = None) -> float | None:
+        """Character height of the tolerance text in drawing units.
+
+        A text attribute with a relative size is a factor of the main text of the
+        dimension, passed as ``main_text_height``. ``None`` when it cannot be told.
+        """
+        attribute = self.text_attribute
+        if not isinstance(attribute, DimensionTextAttributeProperty) or attribute.size is None:
+            return None
+        if attribute.relative_size is False:
+            return attribute.size
+        if attribute.relative_size is True and main_text_height is not None:
+            return attribute.size * main_text_height
+        return None
 
 
 @dataclass(frozen=True, slots=True)

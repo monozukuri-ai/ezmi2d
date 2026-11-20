@@ -666,6 +666,10 @@ def _property_from_core(row: Mapping[str, Any], raw_records: tuple[Any, ...]) ->
             alternate_font_name_value=_text_from_core(_mapping(value["alternate_font_name"])),
             symbol_font_name_value=_text_from_core(_mapping(value["symbol_font_name"])),
             definition_values=tuple(float(item) for item in value["definition_values"]),
+            size=None if value["size"] is None else float(value["size"]),
+            relative_size=(
+                None if value["relative_size"] is None else bool(value["relative_size"])
+            ),
         )
     integer_definition = row["integer_definition"]
     if integer_definition is not None:
@@ -769,7 +773,8 @@ def _dimension_tolerance_from_core(
         lower_text_value=_text_from_core(_mapping(row["lower_text"])),
         text_style_id=text_style_id,
         text_style=propertydb.get(text_style_id),
-        alignment=int(row["alignment"]),
+        text_attribute_id=int(row["text_attribute_id"]),
+        text_attribute=propertydb.get(int(row["text_attribute_id"])),
     )
 
 
@@ -808,6 +813,7 @@ def _dimension_from_core(
         None if row["dimension_style_id"] is None else int(row["dimension_style_id"])
     )
     text_style_id = None if row["text_style_id"] is None else int(row["text_style_id"])
+    text_attribute_id = None if row["text_attribute_id"] is None else int(row["text_attribute_id"])
     tolerance_ids = tuple(int(value) for value in row["tolerance_ids"])
     return Dimension(
         **_base_fields(row, raw_records),
@@ -833,6 +839,10 @@ def _dimension_from_core(
         text_style=None if text_style_id is None else propertydb.get(text_style_id),
         tolerance_ids=tolerance_ids,
         tolerances=tuple(tolerancedb.get(entity_id) for entity_id in tolerance_ids),
+        text_attribute_id=text_attribute_id,
+        text_attribute=(None if text_attribute_id is None else propertydb.get(text_attribute_id)),
+        text_extent=_vec_from_core(_mapping(row["text_extent"])),
+        text_up_extent=_vec_from_core(_mapping(row["text_up_extent"])),
     )
 
 

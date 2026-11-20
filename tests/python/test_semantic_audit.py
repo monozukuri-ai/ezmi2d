@@ -39,8 +39,16 @@ def test_semantic_audit_reports_raw_typed_and_evidence_fields() -> None:
     assert report["annotations"]["hatch_boundary_counts"] == {"1": 1}
     assert report["annotations"]["hatch_pattern_present"] == {"True": 1}
     assert report["annotations"]["symbol_component_counts"] == {"3": 1}
+    assert report["dimensions"]["text_attribute_model"] == {"DimensionTextAttributeProperty": 1}
+    assert report["dimensions"]["text_height_present"] == {"True": 1}
+    assert report["dimensions"]["text_box_right_angle"] == {"True": 1}
+    assert report["annotations"]["dtv_text_attribute_model"] == {
+        "DimensionTextAttributeProperty": 1
+    }
+    assert report["annotations"]["dtv_text_size"] == {"(True, 0.6)": 1}
     assert report["property_models"] == {
         "AssociatedStringsProperty": 1,
+        "DimensionTextAttributeProperty": 2,
         "DimensionTextFormatProperty": 1,
         "HatchPatternProperty": 1,
         "PartStatusProperty": 1,

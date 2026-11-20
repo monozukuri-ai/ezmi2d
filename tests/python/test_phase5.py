@@ -62,16 +62,34 @@ def test_phase5_geometry_and_annotations_are_typed_without_losing_values() -> No
         b"0.9990",
         b"0.9985",
         b"8",
-        b"8",
+        b"17",
     )
     tolerance = document.dimension_tolerances[0]
     assert tolerance.upper_text == "0.9990"
     assert tolerance.lower_text == "0.9985"
     assert isinstance(tolerance.text_style, ezmi2d.DimensionTextFormatProperty)
-    assert tolerance.horizontal_alignment == "center"
-    assert tolerance.vertical_alignment == "upper"
+    # The last field of a DTV is the pointer to the DTA of the tolerance text.
+    assert tolerance.text_attribute_id == 17
+    assert isinstance(tolerance.text_attribute, ezmi2d.DimensionTextAttributeProperty)
+    assert tolerance.text_attribute.size == 0.6
+    assert tolerance.text_attribute.relative_size is True
+    assert tolerance.alignment == 17  # deprecated name of the same field
     assert document.dimensions[0].mi_type == "DANG"
     dimension = document.dimensions[0]
+    # The main text names its DTA between the DTF pointer and the measurement; the
+    # text position is followed by the extent of the text box along and across the text.
+    assert dimension.text_attribute_id == 9
+    assert isinstance(dimension.text_attribute, ezmi2d.DimensionTextAttributeProperty)
+    assert dimension.text_attribute.size == 0.2
+    assert dimension.text_attribute.relative_size is False
+    assert dimension.text_attribute.font_name == "hp_block_v"
+    assert dimension.text_height == 0.2
+    assert dimension.text_extent == ezmi2d.Vec2(0.4, 0.0)
+    assert dimension.text_up_extent == ezmi2d.Vec2(0.0, 0.2)
+    assert dimension.text_rotation == 0.0
+    # A relative size is a factor of the main text of the dimension.
+    assert tolerance.text_height() is None
+    assert tolerance.text_height(dimension.text_height) == pytest.approx(0.12)
     assert dimension.reference_geometry_ids == (20, 20)
     assert all(value is fillet for value in dimension.reference_geometries)
     assert dimension.reference_point_ids == (10, 11)
@@ -219,3 +237,29 @@ def test_malformed_phase5_record_is_retained_as_raw_unsupported(
     assert entity.mi_type == mi_type
     assert entity.raw_record.payload == f"{mi_type}\n{entity_id}\n".encode()
     assert "MI_INVALID_ENTITY_RECORD" in {diagnostic.code for diagnostic in document.diagnostics}
+
+
+def test_pixmap_section_is_not_an_addressable_entity(tmp_path: Path) -> None:
+    # MI 2.40 through 2.80 files carry a preview pixmap in section #~31, between the
+    # global section and the properties. The field after ``PXMAP`` is 1 and is not an
+    # entity ID: read as one it shadowed the first property (ID 1).
+    source = FIXTURE.read_text(encoding="ascii")
+    assert source.count("#~41\n") == 1
+    pixmap = "#~31\nPXMAP\n1\n-1\n2\n2\n8\n0\n0123\n4567\n|~\n"
+    path = tmp_path / "pixmap.mi"
+    path.write_text(source.replace("#~41\n", pixmap + "#~41\n"), encoding="ascii")
+
+    plain = ezmi2d.readfile(FIXTURE)
+    document = ezmi2d.readfile(path)
+
+    assert [
+        record.record_type for record in document.raw.records if record.section_number == 31
+    ] == ["PXMAP"]
+    assert all(entity.mi_type != "PXMAP" for entity in document.all_entities)
+    assert len(document.all_entities) == len(plain.all_entities)
+    codes = {diagnostic.code for diagnostic in document.diagnostics}
+    assert "MI_DUPLICATE_ENTITY_ID" not in codes
+    assert codes == {diagnostic.code for diagnostic in plain.diagnostics}
+    # The first property is still the part status the assemblies point to.
+    first = document.entitydb[1]
+    assert isinstance(first, ezmi2d.PartStatusProperty)

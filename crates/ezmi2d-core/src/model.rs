@@ -363,6 +363,18 @@ pub struct DimensionTextAttributeProperty {
     pub symbol_font_name: TextValue,
     /// Remaining serialized numeric values. Their individual meanings vary by MI version.
     pub definition_values: Vec<f64>,
+    /// Size of the text, the third numeric value: the character height in drawing
+    /// units, or a factor of the main text of the dimension when `relative_size` is
+    /// true. `None` when the value is missing or not positive.
+    ///
+    /// In MI 2.40 through 3.40 the text attribute a dimension points to for its main
+    /// text states the height of the stored text box of a dimension without a
+    /// tolerance, and the attribute of a tolerance states either that same height or a
+    /// factor such as 0.6 that the stored line spacing of the tolerance agrees with.
+    pub size: Option<f64>,
+    /// Whether `size` is a factor rather than a length: the second numeric value is 1
+    /// (true) or 0 (false). `None` when it is missing or another value.
+    pub relative_size: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -391,6 +403,18 @@ pub struct DimensionEntity {
     pub formatted_text: TextValue,
     pub dimension_style_id: Option<EntityId>,
     pub text_style_id: Option<EntityId>,
+    /// Pointer to the DTA text attribute (fonts and size) of the main text: the field
+    /// between the DTF pointer and the measurement.
+    pub text_attribute_id: Option<EntityId>,
+    /// Extent of the stored text box along the text: the first vector after the text
+    /// position. Its direction is the direction of the text and its length the width
+    /// of the box, tolerances included.
+    pub text_extent: Point2,
+    /// Extent of the stored text box across the text: the second vector after the
+    /// text position, at a right angle to `text_extent`. Its length is the height of
+    /// the box: the text size for a plain text, more with stacked tolerances or a
+    /// glyph that reaches below the baseline.
+    pub text_up_extent: Point2,
     pub tolerance_ids: Vec<EntityId>,
     /// All fields after the entity ID, retained for version-specific inspection.
     pub values: Vec<Vec<u8>>,
@@ -408,8 +432,10 @@ pub struct DimensionToleranceEntity {
     pub upper_text: TextValue,
     pub lower_text: TextValue,
     pub text_style_id: EntityId,
-    /// Text origin adjustment code: 1 (lower-left) through 9 (upper-right).
-    pub alignment: usize,
+    /// Pointer to the DTA text attribute (fonts and size) of the tolerance text: the
+    /// last field. It was read as a text alignment code of 1 through 9; in every
+    /// tolerance of the corpus it is the ID of a DTA record.
+    pub text_attribute_id: EntityId,
     pub values: Vec<Vec<u8>>,
 }
 
