@@ -78,14 +78,19 @@ def _platform(filename: str, version: str) -> str:
     prefix = f"ezmi2d-{version}-cp310-abi3-"
     if not filename.startswith(prefix) or not filename.endswith(".whl"):
         raise ValueError(f"wheel does not use the required cp310-abi3 tag: {filename}")
-    tag = filename[len(prefix) : -4]
-    if "manylinux" in tag and tag.endswith("x86_64"):
-        return "linux-x86_64"
-    if "manylinux" in tag and tag.endswith("aarch64"):
-        return "linux-aarch64"
-    if tag.startswith("macosx_") and tag.endswith("universal2"):
+    # A wheel can name several platform tags joined by "." (a compressed tag set). The build tool
+    # does not keep their order stable between releases, so every tag is looked at.
+    tags = filename[len(prefix) : -4].split(".")
+    if all(tag.startswith("manylinux") for tag in tags):
+        if all(tag.endswith("_x86_64") for tag in tags):
+            return "linux-x86_64"
+        if all(tag.endswith("_aarch64") for tag in tags):
+            return "linux-aarch64"
+    if all(tag.startswith("macosx_") for tag in tags) and any(
+        tag.endswith("_universal2") for tag in tags
+    ):
         return "macos-universal2"
-    if tag == "win_amd64":
+    if tags == ["win_amd64"]:
         return "windows-x86_64"
     raise ValueError(f"wheel has an unsupported or non-portable platform tag: {filename}")
 
