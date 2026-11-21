@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from pathlib import Path
 
@@ -237,6 +238,137 @@ def test_malformed_phase5_record_is_retained_as_raw_unsupported(
     assert entity.mi_type == mi_type
     assert entity.raw_record.payload == f"{mi_type}\n{entity_id}\n".encode()
     assert "MI_INVALID_ENTITY_RECORD" in {diagnostic.code for diagnostic in document.diagnostics}
+
+
+def _xy(point: ezmi2d.Vec2) -> tuple[float, float]:
+    return (point.x, point.y)
+
+
+def test_dimension_graphics_are_read_from_the_fields_after_the_text() -> None:
+    document = ezmi2d.readfile(FIXTURE)
+    dimension = document.dimensions[0]
+    graphics = dimension.graphics
+    assert isinstance(graphics, ezmi2d.DimensionGraphics)
+
+    # Every coordinate is stored relative to the text position (0.5, 0.5).
+    assert _xy(graphics.text_origin) == pytest.approx((0.3, 0.4))
+    assert graphics.text_flag_value == 0
+
+    # The tolerance: the DTV with the texts and where its two texts start.
+    placement = graphics.tolerance
+    assert isinstance(placement, ezmi2d.DimensionTolerancePlacement)
+    assert placement.layout_value == 2
+    assert placement.replaces_main_text is False
+    assert placement.tolerance is document.dimension_tolerances[0]
+    assert _xy(placement.upper_origin) == pytest.approx((0.55, 0.52))
+    assert _xy(placement.lower_origin) == pytest.approx((0.55, 0.34))
+
+    # Two terminators; the second one is stored without being drawn.
+    first, second = graphics.arrows
+    assert (first.display_value, first.visible, first.style_id) == (1, True, 18)
+    assert _xy(first.tip) == pytest.approx((1.0, 0.0))
+    assert first.angle == pytest.approx(math.pi / 2.0)
+    assert (second.display_value, second.visible) == (0, False)
+    assert _xy(second.tip) == pytest.approx((0.0, 1.0))
+    style = first.style
+    assert isinstance(style, ezmi2d.DimensionArrowProperty)
+    assert (style.shape_value, style.filling_value, style.relative_size) == (1, 0, False)
+    assert style.length() == 0.2
+    assert style.width() == 0.052
+    # The arrowhead points away from its body: the far end is 0.2 along the angle.
+    corner, tip, other = first.outline()
+    assert tip == first.tip
+    assert (corner.x, corner.y) == pytest.approx((1.0 - 0.026, 0.2))
+    assert (other.x, other.y) == pytest.approx((1.0 + 0.026, 0.2))
+
+    assert graphics.line_style_id == 19
+    assert isinstance(graphics.line_style, ezmi2d.DimensionLineAttributeProperty)
+    assert graphics.lines == ()
+    assert all(isinstance(line, ezmi2d.DimensionSegment) for line in graphics.extension_lines)
+    assert [(*_xy(line.start), *_xy(line.end)) for line in graphics.extension_lines] == [
+        pytest.approx(expected)
+        for expected in (
+            (1.0, 0.0, 1.1, 0.0),
+            (0.0, 1.0, 0.0, 1.1),
+            (0.8, 0.0, 1.0, 0.0),
+            (0.0, 0.8, 0.0, 1.0),
+        )
+    ]
+    # The arc of the angle in two pieces around the text, counterclockwise.
+    assert len(graphics.arcs) == 2
+    for arc in graphics.arcs:
+        assert _xy(arc.center) == pytest.approx((0.0, 0.0))
+        assert arc.radius == pytest.approx(1.0)
+        assert arc.center.distance_to(arc.end) == pytest.approx(1.0)
+        assert arc.sweep == pytest.approx(math.radians(30.0))
+    assert graphics.arcs[0].start == first.tip
+    assert graphics.arcs[1].end == second.tip
+
+    prefix, subfix = graphics.text_parts
+    assert (prefix.slot, prefix.role, prefix.text) == (1, "prefix", "ca.")
+    assert _xy(prefix.origin) == pytest.approx((0.05, 0.4))
+    assert prefix.text_attribute_id == 9
+    assert prefix.text_height() == 0.2
+    assert (subfix.slot, subfix.role, subfix.text) == (4, "subfix", "(TYP)")
+    assert _xy(subfix.origin) == pytest.approx((0.3, 0.16))
+    # A relative size is a factor of the main text of the dimension.
+    assert subfix.text_height() is None
+    assert subfix.text_height(dimension.text_height) == pytest.approx(0.12)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        # one field more than the layout
+        ("(TYP)\n-0.2\n-0.34\n17\n|~", "(TYP)\n-0.2\n-0.34\n17\n0\n|~"),
+        # a field that is 0 in every record that was read
+        ("0.05\n-0.16\n0\n2\n0\n1\n18\n", "0.05\n-0.16\n1\n2\n0\n1\n18\n"),
+        # a count that reaches past the end of the record
+        ("\n19\n0\n4\n0\n0.5\n", "\n19\n0\n400\n0\n0.5\n"),
+        # a number where a count belongs
+        ("\n19\n0\n4\n0\n0.5\n", "\n19\n0.5\n4\n0\n0.5\n"),
+    ],
+)
+def test_dimension_record_that_does_not_follow_the_layout_has_no_graphics(
+    tmp_path: Path, old: str, new: str
+) -> None:
+    source = FIXTURE.read_text(encoding="ascii")
+    assert source.count(old) == 1
+    path = tmp_path / "other-layout.mi"
+    path.write_text(source.replace(old, new), encoding="ascii")
+
+    plain = ezmi2d.readfile(FIXTURE).dimensions[0]
+    dimension = ezmi2d.readfile(path).dimensions[0]
+
+    # The rest of the dimension is read as before.
+    assert dimension.graphics is None
+    assert dimension.text_position == plain.text_position
+    assert dimension.text_height == plain.text_height
+    assert dimension.formatted_text == plain.formatted_text
+    assert dimension.measurement == plain.measurement
+
+
+@pytest.mark.parametrize(
+    ("stored", "drawn"),
+    [
+        # MI 3.40 (UTF-8): U+E000 plus the code of the symbol font
+        ("60\ue030", "60\u00b0"),
+        (" \ue031", " \u2300"),
+        ("\ue0320.01\ue030", "\u00b10.01\u00b0"),
+        # older files: the code between SO and SI
+        ("12\x0e0\x0f30\x0e3\x0f15\x0e4\x0f", "12\u00b030'15\""),
+        ("\x0e2\x0f0.05", "\u00b10.05"),
+        ("\x0e01\x0f", "\u00b0\u2300"),
+        # a code that is not known stays, and so does an escape with one in it
+        ("5\ue041", "5\ue041"),
+        ("5\x0eA\x0f", "5\x0eA\x0f"),
+        ("5\x0e0A\x0f", "5\x0e0A\x0f"),
+        ("plain R 12.5", "plain R 12.5"),
+        ("", ""),
+    ],
+)
+def test_symbol_font_codes_become_the_characters_they_draw(stored: str, drawn: str) -> None:
+    assert ezmi2d.replace_symbol_codes(stored) == drawn
 
 
 def test_pixmap_section_is_not_an_addressable_entity(tmp_path: Path) -> None:

@@ -129,6 +129,45 @@ fn decodes_phase5_curves_annotations_and_part_structure() {
     assert_eq!(dimension.reference_point_ids, vec![10, 11]);
     assert_eq!(dimension.measurement, std::f64::consts::FRAC_PI_2);
     assert_eq!(dimension.formatted_text.text.as_deref(), Some("90"));
+    // The drawn form after the formatted text, with the text position (0.5, 0.5) added.
+    let graphics = dimension.graphics.as_ref().expect("dimension graphics");
+    let near = |point: &ezmi2d_core::Point2, x: f64, y: f64| {
+        (point.x - x).abs() < 1e-12 && (point.y - y).abs() < 1e-12
+    };
+    assert!(near(&graphics.text_origin, 0.3, 0.4));
+    let tolerance = graphics.tolerance.as_ref().expect("tolerance placement");
+    assert_eq!((tolerance.layout_value, tolerance.tolerance_id), (2, 30));
+    assert!(near(&tolerance.upper_origin, 0.55, 0.52));
+    assert!(near(&tolerance.lower_origin, 0.55, 0.34));
+    assert_eq!(
+        graphics
+            .arrows
+            .iter()
+            .map(|arrow| (arrow.display_value, arrow.style_id))
+            .collect::<Vec<_>>(),
+        vec![(1, 18), (0, 18)]
+    );
+    assert!(near(&graphics.arrows[0].tip, 1.0, 0.0));
+    assert_eq!(graphics.arrows[0].angle, std::f64::consts::FRAC_PI_2);
+    assert_eq!(graphics.line_style_id, 19);
+    assert_eq!(
+        (
+            graphics.lines.len(),
+            graphics.extension_lines.len(),
+            graphics.arcs.len()
+        ),
+        (0, 4, 2)
+    );
+    assert!(near(&graphics.arcs[1].end, 0.0, 1.0));
+    assert!(near(&graphics.arcs[1].center, 0.0, 0.0));
+    assert_eq!(
+        graphics
+            .text_parts
+            .iter()
+            .map(|part| (part.slot, part.text.text.as_deref(), part.text_attribute_id))
+            .collect::<Vec<_>>(),
+        vec![(1, Some("ca."), 9), (4, Some("(TYP)"), 17)]
+    );
     let SemanticEntity::Leader(leader) = document.entity(32).unwrap() else {
         panic!("entity 32 is not a leader")
     };

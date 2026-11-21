@@ -416,8 +416,90 @@ pub struct DimensionEntity {
     /// glyph that reaches below the baseline.
     pub text_up_extent: Point2,
     pub tolerance_ids: Vec<EntityId>,
+    /// The drawn form of the dimension stored after the formatted text: where each
+    /// text starts, the terminators, and the dimension, extension and arc pieces.
+    /// `None` when the fields after the formatted text do not follow the layout
+    /// read from MI 2.40 through 3.40.
+    pub graphics: Option<DimensionGraphics>,
     /// All fields after the entity ID, retained for version-specific inspection.
     pub values: Vec<Vec<u8>>,
+}
+
+/// A terminator (arrowhead) stored with a dimension.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DimensionArrow {
+    /// Serialized display code: 1 for a terminator that is drawn, 0 for one that is
+    /// stored without being drawn (the far end of a diameter with one arrowhead).
+    pub display_value: i64,
+    /// Pointer to the DAF record with the shape and size of the terminator.
+    pub style_id: EntityId,
+    pub tip: Point2,
+    /// Direction from the tip along the body of the terminator, in radians.
+    pub angle: f64,
+}
+
+/// A straight piece of a dimension line or of an extension line.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DimensionSegment {
+    pub start: Point2,
+    pub end: Point2,
+}
+
+/// A piece of a dimension arc, counterclockwise from `start` to `end`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DimensionArc {
+    pub start: Point2,
+    pub end: Point2,
+    pub center: Point2,
+}
+
+/// A text beside the main text of a dimension, such as a prefix or a postfix.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DimensionTextPart {
+    /// Which of the five text lists after the arcs the text is stored in, from 0.
+    /// List 1 holds texts placed before the main text, list 2 texts after it and
+    /// list 4 texts in a row below it; lists 0 and 3 are empty in the corpus.
+    pub slot: usize,
+    pub text: TextValue,
+    /// Start of the text: the lower left corner of its first character.
+    pub origin: Point2,
+    /// Pointer to the DTA text attribute of the text.
+    pub text_attribute_id: EntityId,
+}
+
+/// Where the texts of a tolerance are drawn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DimensionTolerancePlacement {
+    /// Serialized layout code: 1 for one text after the main text, 2 for an upper
+    /// and a lower text after the main text, 3 for two limits drawn in place of the
+    /// main text.
+    pub layout_value: i64,
+    /// Pointer to the DTV record with the texts.
+    pub tolerance_id: EntityId,
+    /// Start of the upper text (the only text of layout 1).
+    pub upper_origin: Point2,
+    /// Start of the lower text. Layout 1 stores the text position here.
+    pub lower_origin: Point2,
+}
+
+/// The drawn form of a dimension. The file stores these coordinates relative to
+/// the text position, without rotation; here the text position is added, so they
+/// are in the coordinate system of the part like every other entity.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DimensionGraphics {
+    /// Start of the main text: the lower left corner of its first character.
+    pub text_origin: Point2,
+    /// Serialized value after the start of the main text. 0 or 1 in the corpus;
+    /// its meaning is not established.
+    pub text_flag_value: i64,
+    pub tolerance: Option<DimensionTolerancePlacement>,
+    pub arrows: Vec<DimensionArrow>,
+    /// Pointer to the DLA record of the dimension and extension lines.
+    pub line_style_id: EntityId,
+    pub lines: Vec<DimensionSegment>,
+    pub extension_lines: Vec<DimensionSegment>,
+    pub arcs: Vec<DimensionArc>,
+    pub text_parts: Vec<DimensionTextPart>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

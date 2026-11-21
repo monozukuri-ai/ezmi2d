@@ -3,10 +3,11 @@
 use ezmi2d_core::{
     detect_format, read_input_with_encoding, scan_input, ArcEntity, AssemblyInstance,
     BSplineEntity, Bounds2, CircleEntity, ContourEntity, Diagnostic, DimensionEntity,
-    DimensionToleranceEntity, EncodingInfo, GlobalInfo, GraphicHeader, HatchAssociationEntity,
-    HatchEntity, LeaderEntity, LineEnding, LineEntity, MiError as CoreMiError, MiFormatInfo, Part,
-    Point2, RawDocument, RawLineKind, RawRecord, RawSection, ScanOptions, SemanticDocument,
-    SemanticEntity, SourceSpan, SymbolEntity, TextEntity, TextValue,
+    DimensionGraphics, DimensionSegment, DimensionToleranceEntity, EncodingInfo, GlobalInfo,
+    GraphicHeader, HatchAssociationEntity, HatchEntity, LeaderEntity, LineEnding, LineEntity,
+    MiError as CoreMiError, MiFormatInfo, Part, Point2, RawDocument, RawLineKind, RawRecord,
+    RawSection, ScanOptions, SemanticDocument, SemanticEntity, SourceSpan, SymbolEntity,
+    TextEntity, TextValue,
 };
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyValueError};
@@ -444,8 +445,75 @@ fn set_dimension_fields(
     result.set_item("text_extent", point_dict(py, &value.text_extent)?)?;
     result.set_item("text_up_extent", point_dict(py, &value.text_up_extent)?)?;
     result.set_item("tolerance_ids", &value.tolerance_ids)?;
+    match &value.graphics {
+        Some(graphics) => result.set_item("graphics", dimension_graphics_dict(py, graphics)?)?,
+        None => result.set_item("graphics", py.None())?,
+    }
     result.set_item("values", byte_values(py, &value.values)?)?;
     Ok(())
+}
+
+fn dimension_graphics_dict<'py>(
+    py: Python<'py>,
+    value: &DimensionGraphics,
+) -> PyResult<Bound<'py, PyDict>> {
+    let segments = |items: &[DimensionSegment]| -> PyResult<Bound<'py, PyList>> {
+        let list = PyList::empty(py);
+        for item in items {
+            let segment = PyDict::new(py);
+            segment.set_item("start", point_dict(py, &item.start)?)?;
+            segment.set_item("end", point_dict(py, &item.end)?)?;
+            list.append(segment)?;
+        }
+        Ok(list)
+    };
+    let result = PyDict::new(py);
+    result.set_item("text_origin", point_dict(py, &value.text_origin)?)?;
+    result.set_item("text_flag_value", value.text_flag_value)?;
+    match &value.tolerance {
+        Some(tolerance) => {
+            let placement = PyDict::new(py);
+            placement.set_item("layout_value", tolerance.layout_value)?;
+            placement.set_item("tolerance_id", tolerance.tolerance_id)?;
+            placement.set_item("upper_origin", point_dict(py, &tolerance.upper_origin)?)?;
+            placement.set_item("lower_origin", point_dict(py, &tolerance.lower_origin)?)?;
+            result.set_item("tolerance", placement)?;
+        }
+        None => result.set_item("tolerance", py.None())?,
+    }
+    let arrows = PyList::empty(py);
+    for item in &value.arrows {
+        let arrow = PyDict::new(py);
+        arrow.set_item("display_value", item.display_value)?;
+        arrow.set_item("style_id", item.style_id)?;
+        arrow.set_item("tip", point_dict(py, &item.tip)?)?;
+        arrow.set_item("angle", item.angle)?;
+        arrows.append(arrow)?;
+    }
+    result.set_item("arrows", arrows)?;
+    result.set_item("line_style_id", value.line_style_id)?;
+    result.set_item("lines", segments(&value.lines)?)?;
+    result.set_item("extension_lines", segments(&value.extension_lines)?)?;
+    let arcs = PyList::empty(py);
+    for item in &value.arcs {
+        let arc = PyDict::new(py);
+        arc.set_item("start", point_dict(py, &item.start)?)?;
+        arc.set_item("end", point_dict(py, &item.end)?)?;
+        arc.set_item("center", point_dict(py, &item.center)?)?;
+        arcs.append(arc)?;
+    }
+    result.set_item("arcs", arcs)?;
+    let text_parts = PyList::empty(py);
+    for item in &value.text_parts {
+        let part = PyDict::new(py);
+        part.set_item("slot", item.slot)?;
+        part.set_item("text", text_dict(py, &item.text)?)?;
+        part.set_item("origin", point_dict(py, &item.origin)?)?;
+        part.set_item("text_attribute_id", item.text_attribute_id)?;
+        text_parts.append(part)?;
+    }
+    result.set_item("text_parts", text_parts)?;
+    Ok(result)
 }
 
 fn set_dimension_tolerance_fields(

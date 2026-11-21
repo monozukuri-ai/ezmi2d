@@ -46,8 +46,24 @@ def test_semantic_audit_reports_raw_typed_and_evidence_fields() -> None:
         "DimensionTextAttributeProperty": 1
     }
     assert report["annotations"]["dtv_text_size"] == {"(True, 0.6)": 1}
+    # The drawn form stored after the formatted text.
+    dimensions = report["dimensions"]
+    assert dimensions["graphics_present"] == {"True": 1}
+    assert dimensions["graphics_DANG_arrows"] == {"2": 1}
+    assert dimensions["graphics_DANG_extension_lines"] == {"4": 1}
+    assert dimensions["graphics_DANG_arcs"] == {"2": 1}
+    assert dimensions["graphics_arc_ends_on_one_radius"] == {"True": 2}
+    assert dimensions["graphics_arrow_display"] == {"0": 1, "1": 1}
+    assert dimensions["graphics_arrow_style_model"] == {"DimensionArrowProperty": 2}
+    assert dimensions["graphics_arrow_width_over_length"] == {"(1, 0.26)": 2}
+    assert dimensions["graphics_line_style_model"] == {"DimensionLineAttributeProperty": 1}
+    assert dimensions["graphics_tolerance_layout"] == {"2": 1}
+    assert dimensions["graphics_tolerance_resolved"] == {"True": 1}
+    assert dimensions["graphics_text_part_slot"] == {"1": 1, "4": 1}
     assert report["property_models"] == {
         "AssociatedStringsProperty": 1,
+        "DimensionArrowProperty": 1,
+        "DimensionLineAttributeProperty": 1,
         "DimensionTextAttributeProperty": 2,
         "DimensionTextFormatProperty": 1,
         "HatchPatternProperty": 1,

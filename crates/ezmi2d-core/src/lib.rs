@@ -14,8 +14,9 @@ pub use encoding::{EncodingSource, TextDecodeError, TextEncoding};
 pub use error::MiError;
 pub use model::{
     ArcEntity, AssemblyEntity, AssemblyInstance, BSplineEntity, BSplineSample, Bounds2,
-    CircleEntity, ContourEntity, DimensionEntity, DimensionTextAttributeProperty,
-    DimensionToleranceEntity, EncodingInfo, EntityHeader, EntityId, GlobalInfo, GraphicHeader,
+    CircleEntity, ContourEntity, DimensionArc, DimensionArrow, DimensionEntity, DimensionGraphics,
+    DimensionSegment, DimensionTextAttributeProperty, DimensionTextPart, DimensionToleranceEntity,
+    DimensionTolerancePlacement, EncodingInfo, EntityHeader, EntityId, GlobalInfo, GraphicHeader,
     HatchAssociationEntity, HatchEntity, HatchPatternLine, HatchPatternProperty, LeaderEntity,
     LeaderPoint, LineEntity, Part, PartStatusProperty, Point2, PointEntity, PropertyEntity,
     SemanticDocument, SemanticEntity, StructuredEntity, SymbolEntity, TextEntity, TextValue,

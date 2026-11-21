@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar, TypeAlias
@@ -239,9 +240,53 @@ class DimensionLineAttributeProperty(Property):
 
 @dataclass(frozen=True, slots=True)
 class DimensionArrowProperty(Property):
-    """DAF numeric arrow definition table retained in serialized order."""
+    """DAF definition of a dimension terminator, retained in serialized order.
+
+    The five values are the shape code, the filling code, whether the sizes are
+    factors of the main text of the dimension (1) or lengths (0), the length of the
+    terminator and its width. Shape 1 is stored with a width of 0.26 of the length
+    and shape 5 with 0.54, a 15 and a 30 degree arrowhead; the other shape codes and
+    the filling code are not established.
+    """
 
     definition_values: tuple[float, ...]
+
+    def _value(self, index: int) -> float | None:
+        values = self.definition_values
+        return values[index] if len(values) == 5 else None
+
+    @property
+    def shape_value(self) -> int | None:
+        value = self._value(0)
+        return int(value) if value is not None and value == int(value) else None
+
+    @property
+    def filling_value(self) -> int | None:
+        value = self._value(1)
+        return int(value) if value is not None and value == int(value) else None
+
+    @property
+    def relative_size(self) -> bool | None:
+        value = self._value(2)
+        return {0.0: False, 1.0: True}.get(value) if value is not None else None
+
+    def length(self, main_text_height: float | None = None) -> float | None:
+        """Length of the terminator from its tip, in drawing units."""
+        return self._length(3, main_text_height)
+
+    def width(self, main_text_height: float | None = None) -> float | None:
+        """Width of the terminator at its far end, in drawing units."""
+        return self._length(4, main_text_height)
+
+    def _length(self, index: int, main_text_height: float | None) -> float | None:
+        value = self._value(index)
+        if value is None or not value > 0.0:
+            return None
+        if self.relative_size is False:
+            return value
+        if self.relative_size is True and main_text_height is not None:
+            return value * main_text_height
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -585,6 +630,199 @@ class StructuredEntity(MiEntity):
 
 
 @dataclass(frozen=True, slots=True)
+class DimensionArrow:
+    """A terminator stored with a dimension."""
+
+    #: 1 for a terminator that is drawn, 0 for one stored without being drawn.
+    display_value: int
+    style_id: int
+    style: Property | None
+    tip: Vec2
+    #: Direction from the tip along the body of the terminator, in radians.
+    angle: float
+
+    @property
+    def visible(self) -> bool:
+        return self.display_value == 1
+
+    def outline(self, main_text_height: float | None = None) -> tuple[Vec2, Vec2, Vec2] | None:
+        """The arrowhead as a triangle: one corner of the far end, the tip, the other.
+
+        ``None`` for a shape other than the two arrowheads (shape codes 1 and 5) or
+        when the size cannot be told.
+        """
+        style = self.style
+        if not isinstance(style, DimensionArrowProperty) or style.shape_value not in (1, 5):
+            return None
+        length = style.length(main_text_height)
+        width = style.width(main_text_height)
+        if length is None or width is None:
+            return None
+        along = Vec2(math.cos(self.angle), math.sin(self.angle))
+        back = Vec2(self.tip.x + along.x * length, self.tip.y + along.y * length)
+        half = width / 2.0
+        return (
+            Vec2(back.x - along.y * half, back.y + along.x * half),
+            self.tip,
+            Vec2(back.x + along.y * half, back.y - along.x * half),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DimensionSegment:
+    """A straight piece of a dimension line or of an extension line."""
+
+    start: Vec2
+    end: Vec2
+
+
+@dataclass(frozen=True, slots=True)
+class DimensionArc:
+    """A piece of a dimension arc, counterclockwise from ``start`` to ``end``."""
+
+    start: Vec2
+    end: Vec2
+    center: Vec2
+
+    @property
+    def radius(self) -> float:
+        return self.center.distance_to(self.start)
+
+    @property
+    def start_angle(self) -> float:
+        return math.atan2(self.start.y - self.center.y, self.start.x - self.center.x)
+
+    @property
+    def sweep(self) -> float:
+        """Angle covered from ``start`` to ``end`` in radians, between 0 and 2 pi."""
+        end = math.atan2(self.end.y - self.center.y, self.end.x - self.center.x)
+        return (end - self.start_angle) % math.tau
+
+
+@dataclass(frozen=True, slots=True)
+class DimensionTextPart:
+    """A text beside the main text of a dimension."""
+
+    #: Which of the five text lists of the record holds the text, from 0.
+    slot: int
+    text_value: TextValue
+    #: Start of the text: the lower left corner of its first character.
+    origin: Vec2
+    text_attribute_id: int
+    text_attribute: Property | None
+
+    @property
+    def text(self) -> str | None:
+        return self.text_value.text
+
+    @property
+    def role(self) -> str | None:
+        """``"prefix"`` (before the main text), ``"postfix"`` (after it) or
+        ``"subfix"`` (in a row below it); ``None`` for a list whose use is not known.
+        """
+        return {1: "prefix", 2: "postfix", 4: "subfix"}.get(self.slot)
+
+    def text_height(self, main_text_height: float | None = None) -> float | None:
+        return _attribute_text_height(self.text_attribute, main_text_height)
+
+
+@dataclass(frozen=True, slots=True)
+class DimensionTolerancePlacement:
+    """Where the texts of a tolerance are drawn."""
+
+    #: 1: one text after the main text. 2: an upper and a lower text after the main
+    #: text. 3: two limits drawn in place of the main text.
+    layout_value: int
+    tolerance_id: int
+    tolerance: DimensionTolerance | None
+    upper_origin: Vec2
+    #: Start of the lower text; layout 1 has none and stores the text position here.
+    lower_origin: Vec2
+
+    @property
+    def replaces_main_text(self) -> bool:
+        return self.layout_value == 3
+
+
+@dataclass(frozen=True, slots=True)
+class DimensionGraphics:
+    """The drawn form of a dimension as the file stores it.
+
+    The file keeps these coordinates relative to the text position, without
+    rotation. Here the text position is added, so they are in the coordinate system
+    of the part like every other entity. Every text starts at the lower left corner
+    of its first character and runs along ``Dimension.text_rotation``.
+    """
+
+    text_origin: Vec2
+    #: Value after the start of the main text: 0 or 1; its meaning is not established.
+    text_flag_value: int
+    tolerance: DimensionTolerancePlacement | None
+    arrows: tuple[DimensionArrow, ...]
+    line_style_id: int
+    line_style: Property | None
+    lines: tuple[DimensionSegment, ...]
+    extension_lines: tuple[DimensionSegment, ...]
+    arcs: tuple[DimensionArc, ...]
+    text_parts: tuple[DimensionTextPart, ...]
+
+
+#: Characters of the symbol font (``hp_symbols``) a dimension text switches to. A
+#: UTF-8 file (MI 3.40) writes them as U+E000 plus the code; an older file writes
+#: the code between the control characters SO (0x0E) and SI (0x0F). Codes 0, 1 and
+#: 2 stand where a degree sign (every angular dimension), a diameter sign (the
+#: prefix of a diameter) and a plus-minus sign (a tolerance with one text) belong;
+#: with 3 and 4 as minutes and seconds the parts of an angle add up to its
+#: measurement. Minutes and seconds become the apostrophe and the quotation mark,
+#: the way CAD texts write them and every character set has them.
+_SYMBOL_FONT_CHARACTERS = {
+    "0": "\u00b0",
+    "1": "\u2300",
+    "2": "\u00b1",
+    "3": "'",
+    "4": '"',
+}
+_SYMBOL_ESCAPE = re.compile("\x0e([^\x0e\x0f]*)\x0f")
+
+
+def replace_symbol_codes(text: str) -> str:
+    """Replace the symbol font codes of a dimension text by the characters they draw.
+
+    ``"60\\ue030"`` and ``"60\\x0e0\\x0f"`` both become ``"60°"``. A code that is
+    not known is left as it is, an escape with one in it as a whole.
+    """
+
+    def escape(match: re.Match[str]) -> str:
+        codes = match.group(1)
+        if all(code in _SYMBOL_FONT_CHARACTERS for code in codes):
+            return "".join(_SYMBOL_FONT_CHARACTERS[code] for code in codes)
+        return match.group(0)
+
+    if "\x0e" in text:
+        text = _SYMBOL_ESCAPE.sub(escape, text)
+    if any("\ue000" <= character <= "\ue0ff" for character in text):
+        text = "".join(
+            _SYMBOL_FONT_CHARACTERS.get(chr(ord(character) - 0xE000), character)
+            if "\ue000" <= character <= "\ue0ff"
+            else character
+            for character in text
+        )
+    return text
+
+
+def _attribute_text_height(
+    attribute: Property | None, main_text_height: float | None
+) -> float | None:
+    if not isinstance(attribute, DimensionTextAttributeProperty) or attribute.size is None:
+        return None
+    if attribute.relative_size is False:
+        return attribute.size
+    if attribute.relative_size is True and main_text_height is not None:
+        return attribute.size * main_text_height
+    return None
+
+
+@dataclass(frozen=True, slots=True)
 class Dimension(StructuredEntity):
     property_ids: tuple[int, ...]
     properties: tuple[Property, ...]
@@ -609,6 +847,10 @@ class Dimension(StructuredEntity):
     #: box). The text position is the middle of the box.
     text_extent: Vec2 = Vec2(0.0, 0.0)
     text_up_extent: Vec2 = Vec2(0.0, 0.0)
+    #: The drawn form stored after the formatted text: where each text starts, the
+    #: terminators and the line pieces. ``None`` when those fields do not follow the
+    #: layout read from MI 2.40 through 3.40.
+    graphics: DimensionGraphics | None = None
 
     @property
     def formatted_text(self) -> str | None:
@@ -682,14 +924,7 @@ class DimensionTolerance(StructuredEntity):
         A text attribute with a relative size is a factor of the main text of the
         dimension, passed as ``main_text_height``. ``None`` when it cannot be told.
         """
-        attribute = self.text_attribute
-        if not isinstance(attribute, DimensionTextAttributeProperty) or attribute.size is None:
-            return None
-        if attribute.relative_size is False:
-            return attribute.size
-        if attribute.relative_size is True and main_text_height is not None:
-            return attribute.size * main_text_height
-        return None
+        return _attribute_text_height(self.text_attribute, main_text_height)
 
 
 @dataclass(frozen=True, slots=True)

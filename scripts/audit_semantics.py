@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
@@ -52,6 +53,76 @@ def _new_record_stats() -> dict[str, Counter[object]]:
         "field_counts": Counter(),
         "terminal_field_values": Counter(),
     }
+
+
+def _audit_dimension_graphics(
+    entity: ezmi2d.Dimension, stats: defaultdict[str, Counter[object]]
+) -> None:
+    """Evidence for the drawn form stored after the formatted text of a dimension.
+
+    The fields follow one layout to the last field of the record, the pointers in it
+    name records of the expected kinds, the two terminators of a linear dimension
+    are the measurement apart, and a tail drawn beyond a terminator is twice as long
+    as the terminator.
+    """
+    graphics = entity.graphics
+    stats["graphics_present"][graphics is not None] += 1
+    if graphics is None:
+        return
+    kind = entity.mi_type
+    stats["graphics_text_flag"][graphics.text_flag_value] += 1
+    stats["graphics_line_style_model"][type(graphics.line_style).__name__] += 1
+    stats[f"graphics_{kind}_arrows"][len(graphics.arrows)] += 1
+    stats[f"graphics_{kind}_lines"][len(graphics.lines)] += 1
+    stats[f"graphics_{kind}_extension_lines"][len(graphics.extension_lines)] += 1
+    stats[f"graphics_{kind}_arcs"][len(graphics.arcs)] += 1
+    tolerance = graphics.tolerance
+    stats["graphics_tolerance_layout"][None if tolerance is None else tolerance.layout_value] += 1
+    if tolerance is not None:
+        stats["graphics_tolerance_resolved"][tolerance.tolerance is not None] += 1
+    for part in graphics.text_parts:
+        stats["graphics_text_part_slot"][part.slot] += 1
+        stats["graphics_text_part_attribute_model"][type(part.text_attribute).__name__] += 1
+    for arc in graphics.arcs:
+        end_radius = arc.center.distance_to(arc.end)
+        stats["graphics_arc_ends_on_one_radius"][
+            abs(arc.radius - end_radius) <= 1e-6 * max(arc.radius, 1e-300)
+        ] += 1
+    for arrow in graphics.arrows:
+        style = arrow.style
+        stats["graphics_arrow_display"][arrow.display_value] += 1
+        stats["graphics_arrow_style_model"][type(style).__name__] += 1
+        if not isinstance(style, ezmi2d.DimensionArrowProperty):
+            continue
+        length = style.length(entity.text_height)
+        width = style.width(entity.text_height)
+        stats["graphics_arrow_shape_and_size_mode"][
+            (style.shape_value, style.filling_value, style.relative_size)
+        ] += 1
+        if length is None or width is None:
+            continue
+        stats["graphics_arrow_width_over_length"][
+            (style.shape_value, round(width / length, 2))
+        ] += 1
+        # a line piece that leaves the tip along the body of the terminator
+        for segment in graphics.lines:
+            for near, far in ((segment.start, segment.end), (segment.end, segment.start)):
+                if near.distance_to(arrow.tip) > 1e-7 * max(1.0, abs(near.x), abs(near.y)):
+                    continue
+                reach = near.distance_to(far)
+                if reach <= 0.0:
+                    continue
+                along = (
+                    (far.x - near.x) * math.cos(arrow.angle)
+                    + (far.y - near.y) * math.sin(arrow.angle)
+                ) / reach
+                if along > 0.999 and reach / length < 2.5:
+                    stats["graphics_tail_over_arrow_length"][round(reach / length, 2)] += 1
+    if kind == "DSGL" and len(graphics.arrows) == 2:
+        apart = graphics.arrows[0].tip.distance_to(graphics.arrows[1].tip)
+        stats["graphics_DSGL_arrow_tips_measurement_apart"][
+            abs(apart - entity.measurement) <= 1e-6 * max(1.0, abs(entity.measurement))
+        ] += 1
 
 
 def audit(inputs: Sequence[Path]) -> dict[str, Any]:
@@ -150,6 +221,7 @@ def audit(inputs: Sequence[Path]) -> dict[str, Any]:
                     dimension_stats["plain_text_box_height_over_size"][
                         round(height / entity.text_height, 2)
                     ] += 1
+                _audit_dimension_graphics(entity, dimension_stats)
             elif isinstance(entity, ezmi2d.DimensionTolerance):
                 annotation_stats["dtv_decoded_text"][
                     entity.upper_text is not None and entity.lower_text is not None

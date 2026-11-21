@@ -3,8 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::model::{
     ArcEntity, AssemblyEntity, AssemblyInstance, BSplineEntity, BSplineSample, Bounds2,
-    CircleEntity, ContourEntity, DimensionEntity, DimensionTextAttributeProperty,
-    DimensionToleranceEntity, EncodingInfo, EntityHeader, EntityId, GlobalInfo, GraphicHeader,
+    CircleEntity, ContourEntity, DimensionArc, DimensionArrow, DimensionEntity, DimensionGraphics,
+    DimensionSegment, DimensionTextAttributeProperty, DimensionTextPart, DimensionToleranceEntity,
+    DimensionTolerancePlacement, EncodingInfo, EntityHeader, EntityId, GlobalInfo, GraphicHeader,
     HatchAssociationEntity, HatchEntity, HatchPatternLine, HatchPatternProperty, LeaderEntity,
     LeaderPoint, LineEntity, Part, PartStatusProperty, Point2, PointEntity, PropertyEntity,
     SemanticDocument, SemanticEntity, SymbolEntity, TextEntity, TextValue, UnsupportedEntity,
@@ -1264,51 +1265,253 @@ fn parse_dimension(
         required_f64(fields, position_index + 4, "dimension text up extent x")?,
         required_f64(fields, position_index + 5, "dimension text up extent y")?,
     );
+    let reference_geometry_ids = geometry_offsets
+        .iter()
+        .map(|offset| required_u64(fields, content_start + offset, "dimension geometry pointer"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let reference_point_ids = point_offsets
+        .iter()
+        .map(|offset| required_u64(fields, content_start + offset, "dimension point pointer"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let text_position = Point2::new(
+        required_f64(fields, position_index, "dimension text position x")?,
+        required_f64(fields, position_index + 1, "dimension text position y")?,
+    );
+    let measurement = required_f64(fields, measurement_index, "dimension measurement")?;
+    let formatted_text = decoded_text_field(
+        data,
+        fields,
+        measurement_index + 1,
+        start_line,
+        encoding,
+        diagnostics,
+        &format!("{mi_type} formatted measurement"),
+    )
+    .expect("dimension field count was checked");
+    let graphics = parse_dimension_graphics(
+        data,
+        fields,
+        measurement_index + 2,
+        &text_position,
+        start_line,
+        encoding,
+        diagnostics,
+        mi_type,
+    );
     Ok(SemanticEntity::Dimension(DimensionEntity {
         entity,
         mi_type: mi_type.to_owned(),
         property_ids,
-        reference_geometry_ids: geometry_offsets
-            .iter()
-            .map(|offset| {
-                required_u64(fields, content_start + offset, "dimension geometry pointer")
-            })
-            .collect::<Result<Vec<_>, _>>()?,
-        reference_point_ids: point_offsets
-            .iter()
-            .map(|offset| required_u64(fields, content_start + offset, "dimension point pointer"))
-            .collect::<Result<Vec<_>, _>>()?,
-        text_position: Point2::new(
-            required_f64(
-                fields,
-                content_start + position_offset,
-                "dimension text position x",
-            )?,
-            required_f64(
-                fields,
-                content_start + position_offset + 1,
-                "dimension text position y",
-            )?,
-        ),
-        measurement: required_f64(fields, measurement_index, "dimension measurement")?,
-        formatted_text: decoded_text_field(
-            data,
-            fields,
-            measurement_index + 1,
-            start_line,
-            encoding,
-            diagnostics,
-            &format!("{mi_type} formatted measurement"),
-        )
-        .expect("dimension field count was checked"),
+        reference_geometry_ids,
+        reference_point_ids,
+        text_position,
+        measurement,
+        formatted_text,
         dimension_style_id: (style_id != 0).then_some(style_id),
         text_style_id: (text_style_id != 0).then_some(text_style_id),
         text_attribute_id: (text_attribute_id != 0).then_some(text_attribute_id),
         text_extent,
         text_up_extent,
         tolerance_ids: Vec::new(),
+        graphics,
         values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
     }))
+}
+
+/// Reads fields in order and remembers the first one that does not fit.
+struct FieldCursor<'a, 'b> {
+    fields: &'a [&'b [u8]],
+    index: usize,
+    failed: bool,
+}
+
+impl FieldCursor<'_, '_> {
+    fn integer(&mut self) -> i64 {
+        let value = self
+            .fields
+            .get(self.index)
+            .and_then(|field| parse_i64(field));
+        self.index += 1;
+        value.unwrap_or_else(|| {
+            self.failed = true;
+            0
+        })
+    }
+
+    fn count(&mut self) -> usize {
+        // a count larger than the record cannot be honest; it also bounds the loops
+        match usize::try_from(self.integer()) {
+            Ok(count) if count <= self.fields.len() => count,
+            _ => {
+                self.failed = true;
+                0
+            }
+        }
+    }
+
+    fn pointer(&mut self) -> EntityId {
+        u64::try_from(self.integer()).unwrap_or_else(|_| {
+            self.failed = true;
+            0
+        })
+    }
+
+    fn number(&mut self) -> f64 {
+        let value = self
+            .fields
+            .get(self.index)
+            .and_then(|field| parse_f64(field))
+            .filter(|value| value.is_finite());
+        self.index += 1;
+        value.unwrap_or_else(|| {
+            self.failed = true;
+            0.0
+        })
+    }
+
+    /// A point stored relative to `origin`.
+    fn point(&mut self, origin: &Point2) -> Point2 {
+        let x = self.number();
+        let y = self.number();
+        Point2::new(origin.x + x, origin.y + y)
+    }
+
+    fn skip_field(&mut self) -> usize {
+        if self.index >= self.fields.len() {
+            self.failed = true;
+        }
+        self.index += 1;
+        self.index - 1
+    }
+}
+
+/// The fields after the formatted text of a dimension: the drawn form.
+///
+/// ```text
+/// x y                      start of the main text
+/// flag
+/// layout [DTV x y x y]     tolerance; the bracket only when layout is not 0
+/// 0
+/// n [0 n*(display DAF x y angle)]   terminators
+/// DLA
+/// n n*(x y x y)            dimension lines
+/// n [0 n*(x y x y)]        extension lines
+/// 0
+/// n n*(x y x y x y)        dimension arcs: start, end, center
+/// 5 * (n n*(text x y DTA)) texts beside the main text
+/// ```
+///
+/// Every coordinate is relative to the text position. The layout is read from
+/// MI 2.40 through 3.40. A record that does not follow it to its last field, or
+/// whose fixed zeros are not zero, has no typed graphics.
+#[allow(clippy::too_many_arguments)]
+fn parse_dimension_graphics(
+    data: &[u8],
+    fields: &[&[u8]],
+    start: usize,
+    text_position: &Point2,
+    start_line: usize,
+    encoding: &EncodingInfo,
+    diagnostics: &mut Vec<Diagnostic>,
+    mi_type: &str,
+) -> Option<DimensionGraphics> {
+    const TEXT_SLOTS: usize = 5;
+    let mut cursor = FieldCursor {
+        fields,
+        index: start,
+        failed: false,
+    };
+    let text_origin = cursor.point(text_position);
+    let text_flag_value = cursor.integer();
+    let layout_value = cursor.integer();
+    let tolerance = (layout_value != 0).then(|| DimensionTolerancePlacement {
+        layout_value,
+        tolerance_id: cursor.pointer(),
+        upper_origin: cursor.point(text_position),
+        lower_origin: cursor.point(text_position),
+    });
+    let mut zeros = vec![cursor.integer()];
+    let arrow_count = cursor.count();
+    if arrow_count > 0 {
+        zeros.push(cursor.integer());
+    }
+    let arrows = (0..arrow_count)
+        .map(|_| DimensionArrow {
+            display_value: cursor.integer(),
+            style_id: cursor.pointer(),
+            tip: cursor.point(text_position),
+            angle: cursor.number(),
+        })
+        .collect::<Vec<_>>();
+    let line_style_id = cursor.pointer();
+    let line_count = cursor.count();
+    let lines = (0..line_count)
+        .map(|_| DimensionSegment {
+            start: cursor.point(text_position),
+            end: cursor.point(text_position),
+        })
+        .collect::<Vec<_>>();
+    let extension_count = cursor.count();
+    if extension_count > 0 {
+        zeros.push(cursor.integer());
+    }
+    let extension_lines = (0..extension_count)
+        .map(|_| DimensionSegment {
+            start: cursor.point(text_position),
+            end: cursor.point(text_position),
+        })
+        .collect::<Vec<_>>();
+    zeros.push(cursor.integer());
+    let arc_count = cursor.count();
+    let arcs = (0..arc_count)
+        .map(|_| DimensionArc {
+            start: cursor.point(text_position),
+            end: cursor.point(text_position),
+            center: cursor.point(text_position),
+        })
+        .collect::<Vec<_>>();
+    // (slot, field index of the text, start, DTA pointer): decoded once the whole
+    // record is known to fit, so a record that does not fit reports nothing
+    let mut parts = Vec::new();
+    for slot in 0..TEXT_SLOTS {
+        for _ in 0..cursor.count() {
+            let field_index = cursor.skip_field();
+            let origin = cursor.point(text_position);
+            parts.push((slot, field_index, origin, cursor.pointer()));
+        }
+    }
+    if cursor.failed || cursor.index != fields.len() || zeros.iter().any(|value| *value != 0) {
+        return None;
+    }
+    let text_parts = parts
+        .into_iter()
+        .map(
+            |(slot, field_index, origin, text_attribute_id)| DimensionTextPart {
+                slot,
+                text: decode_text_value(
+                    data,
+                    fields[field_index],
+                    start_line + field_index,
+                    encoding,
+                    diagnostics,
+                    &format!("{mi_type} text part"),
+                ),
+                origin,
+                text_attribute_id,
+            },
+        )
+        .collect();
+    Some(DimensionGraphics {
+        text_origin,
+        text_flag_value,
+        tolerance,
+        arrows,
+        line_style_id,
+        lines,
+        extension_lines,
+        arcs,
+        text_parts,
+    })
 }
 
 fn parse_assembly(

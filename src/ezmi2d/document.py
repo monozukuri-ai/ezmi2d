@@ -23,12 +23,18 @@ from .entities import (
     Circle,
     Contour,
     Dimension,
+    DimensionArc,
+    DimensionArrow,
     DimensionArrowProperty,
     DimensionDisplayAttributeProperty,
+    DimensionGraphics,
     DimensionLineAttributeProperty,
+    DimensionSegment,
     DimensionTextAttributeProperty,
     DimensionTextFormatProperty,
+    DimensionTextPart,
     DimensionTolerance,
+    DimensionTolerancePlacement,
     Fillet,
     Graphic,
     Hatch,
@@ -843,6 +849,74 @@ def _dimension_from_core(
         text_attribute=(None if text_attribute_id is None else propertydb.get(text_attribute_id)),
         text_extent=_vec_from_core(_mapping(row["text_extent"])),
         text_up_extent=_vec_from_core(_mapping(row["text_up_extent"])),
+        graphics=_dimension_graphics_from_core(row["graphics"], propertydb, tolerancedb),
+    )
+
+
+def _dimension_graphics_from_core(
+    value: Any,
+    propertydb: Mapping[int, Property],
+    tolerancedb: Mapping[int, DimensionTolerance],
+) -> DimensionGraphics | None:
+    if value is None:
+        return None
+    row = _mapping(value)
+
+    def point(item: Any) -> Vec2:
+        return _vec_from_core(_mapping(item))
+
+    def segments(items: Any) -> tuple[DimensionSegment, ...]:
+        return tuple(
+            DimensionSegment(start=point(_mapping(item)["start"]), end=point(_mapping(item)["end"]))
+            for item in items
+        )
+
+    tolerance = None
+    if row["tolerance"] is not None:
+        placement = _mapping(row["tolerance"])
+        tolerance_id = int(placement["tolerance_id"])
+        tolerance = DimensionTolerancePlacement(
+            layout_value=int(placement["layout_value"]),
+            tolerance_id=tolerance_id,
+            tolerance=tolerancedb.get(tolerance_id),
+            upper_origin=point(placement["upper_origin"]),
+            lower_origin=point(placement["lower_origin"]),
+        )
+    line_style_id = int(row["line_style_id"])
+    return DimensionGraphics(
+        text_origin=point(row["text_origin"]),
+        text_flag_value=int(row["text_flag_value"]),
+        tolerance=tolerance,
+        arrows=tuple(
+            DimensionArrow(
+                display_value=int(item["display_value"]),
+                style_id=int(item["style_id"]),
+                style=propertydb.get(int(item["style_id"])),
+                tip=point(item["tip"]),
+                angle=float(item["angle"]),
+            )
+            for item in map(_mapping, row["arrows"])
+        ),
+        line_style_id=line_style_id,
+        line_style=propertydb.get(line_style_id),
+        lines=segments(row["lines"]),
+        extension_lines=segments(row["extension_lines"]),
+        arcs=tuple(
+            DimensionArc(
+                start=point(item["start"]), end=point(item["end"]), center=point(item["center"])
+            )
+            for item in map(_mapping, row["arcs"])
+        ),
+        text_parts=tuple(
+            DimensionTextPart(
+                slot=int(item["slot"]),
+                text_value=_text_from_core(_mapping(item["text"])),
+                origin=point(item["origin"]),
+                text_attribute_id=int(item["text_attribute_id"]),
+                text_attribute=propertydb.get(int(item["text_attribute_id"])),
+            )
+            for item in map(_mapping, row["text_parts"])
+        ),
     )
 
 

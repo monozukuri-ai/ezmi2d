@@ -137,7 +137,7 @@ Every entity derives from the frozen `MiEntity` data model and retains `id`, `mi
 | `BSPL` | `BSpline` | order/degree, presence-aware flags/weights, controls, knots, samples, `evaluate()` |
 | `CIR` | `Circle` | resolved center/circumference and radius |
 | `TEX` | `Text` | 3x3 transform, origin, rotation, width factor, mirror, alignment, fonts, multiline content |
-| `DANG`, `DCHMF`, `DDIA`, `DRAD`, `DSGL` | `Dimension` | resolved geometry/point references, text position, measurement, formatted text, DDA/DTF styles, DTA text attribute (`text_attribute`, `text_height`), stored text box (`text_extent`, `text_up_extent`, `text_rotation`), DTV references |
+| `DANG`, `DCHMF`, `DDIA`, `DRAD`, `DSGL` | `Dimension` | resolved geometry/point references, text position, measurement, formatted text, DDA/DTF styles, DTA text attribute (`text_attribute`, `text_height`), stored text box (`text_extent`, `text_up_extent`, `text_rotation`), DTV references, the stored drawn form (`graphics`) |
 | `DTV` | `DimensionTolerance` | upper/lower values and text, DTF style, DTA text attribute (`text_attribute`, `text_height(main_text_height)`) |
 | `LED` | `Leader` | graphic attributes, arrow code/size, ordered 2D vertices and retained elevations |
 | `COC` | `Contour` | ordered graphic components, closed flag, raw orientation |
@@ -145,7 +145,8 @@ Every entity derives from the frozen `MiEntity` data model and retains `id`, `mi
 | `SYML` | `Symbol` | three ordered, resolved graphic components |
 | `PSTAT`, `ASSP` | specialized property types | part status and strictly decoded associated strings |
 | `DTA` | `DimensionTextAttributeProperty` | fonts, `size` (character height, or a factor of the main text when `relative_size` is true); the other numeric values remain ordered values |
-| `DTF`, `DDA`, `DLA`, `DAF` | dimension property subclasses | typed numeric tables; unverified enumerations remain ordered values |
+| `DTF`, `DDA`, `DLA` | dimension property subclasses | typed numeric tables; unverified enumerations remain ordered values |
+| `DAF` | `DimensionArrowProperty` | `shape_value`, `filling_value`, `relative_size`, `length()` and `width()` of a dimension terminator; the numeric table stays in `definition_values` |
 | `HAPP` | `HatchPatternProperty` | ordered offset/distance/angle/color/linetype sub-patterns |
 | `ASSE` | `Assembly` | property IDs, definition part, child instances, 3x3 transforms |
 | other addressable records | `UnsupportedEntity` | ID, ownership, and complete raw record |
@@ -155,6 +156,44 @@ Fields whose meaning has not been verified remain `bytes` in `values`, `definiti
 headers remain `None`. `BSpline` layout probing is bounded to the first 64 candidate prefix fields;
 unknown longer-prefix layouts fall back to `UnsupportedEntity` with an
 `MI_INVALID_ENTITY_RECORD` diagnostic.
+
+### The drawn form of a dimension
+
+`Dimension.graphics` is the form the file stores after the formatted text, as a
+`DimensionGraphics`, or `None` when those fields do not follow the layout read from
+MI 2.40 through 3.40. The file keeps these coordinates relative to the text position;
+`ezmi2d` adds the text position, so they are in the coordinate system of the part like
+every other entity.
+
+| Attribute | Content |
+|---|---|
+| `text_origin` | start of the main text: the lower left corner of its first character. Every text runs along `Dimension.text_rotation` |
+| `tolerance` | `DimensionTolerancePlacement` or `None`: the `DimensionTolerance` and the starts of its upper and lower text. `layout_value` is 1 (one text after the main text), 2 (an upper and a lower text after it) or 3 (two limits in place of the main text, `replaces_main_text`) |
+| `arrows` | `DimensionArrow`: `tip`, `angle` (from the tip along the body, radians), the `DimensionArrowProperty` in `style`, and `visible` (a terminator can be stored without being drawn). `outline(main_text_height)` gives an arrowhead as three points; it is `None` for a shape other than the two arrowheads |
+| `lines`, `extension_lines` | `DimensionSegment` (`start`, `end`) pieces of the dimension line and of the extension lines |
+| `arcs` | `DimensionArc` (`start`, `end`, `center`, `radius`, `sweep`), counterclockwise from start to end |
+| `text_parts` | `DimensionTextPart`: a text beside the main text with its `origin`, DTA `text_attribute`, `text_height(main_text_height)` and `role` (`"prefix"`, `"postfix"`, `"subfix"` for a row below, or `None`) |
+| `line_style` | the `DimensionLineAttributeProperty` (DLA) of the lines |
+| `text_flag_value` | a stored 0 or 1 whose meaning is not established |
+
+```python
+for dimension in drawing.dimensions:
+    graphics = dimension.graphics
+    if graphics is None:
+        continue
+    for segment in (*graphics.lines, *graphics.extension_lines):
+        print("line", segment.start, segment.end)
+    for arrow in graphics.arrows:
+        if arrow.visible:
+            print("arrowhead", arrow.outline(dimension.text_height))
+    print(ezmi2d.replace_symbol_codes(dimension.formatted_text or ""), graphics.text_origin)
+```
+
+A dimension text switches to the symbol font by code: U+E000 plus the code in a UTF-8
+file, the code between SO (0x0E) and SI (0x0F) in an older one.
+`ezmi2d.replace_symbol_codes(text)` replaces the codes 0 through 4 by the degree sign,
+the diameter sign, the plus-minus sign, `'` (minutes) and `"` (seconds) and leaves any
+other code as it is. `formatted_text` and the other text values are not changed by it.
 
 Every `GraphicEntity` exposes typed `color`, `linetype`, `lineweight`, attached
 `property_ids` / resolved `properties`, and layers decoded from `ASSP` values

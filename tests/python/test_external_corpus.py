@@ -292,6 +292,63 @@ def test_product_generated_compressed_mi_matches_its_logical_payload() -> None:
         (tolerance.text_attribute.relative_size, round(tolerance.text_attribute.size, 6))
         for tolerance in packed.dimension_tolerances
     ) == {(True, 0.6): 7, (False, 0.09): 2, (False, 0.03): 1}
+    # The fields after the formatted text are the drawn form of the dimension. All 46
+    # records follow one layout to their last field.
+    drawn = [dimension.graphics for dimension in packed.dimensions]
+    assert all(isinstance(graphics, ezmi2d.DimensionGraphics) for graphics in drawn)
+    by_type = Counter(
+        (
+            dimension.mi_type,
+            len(dimension.graphics.arrows),
+            bool(dimension.graphics.lines),
+            bool(dimension.graphics.extension_lines),
+            bool(dimension.graphics.arcs),
+        )
+        for dimension in packed.dimensions
+    )
+    assert by_type == {
+        ("DSGL", 2, True, True, False): 20,
+        ("DANG", 2, False, True, True): 8,
+        ("DRAD", 1, True, False, False): 6,
+        ("DRAD", 1, True, False, True): 1,
+        ("DDIA", 2, True, False, False): 6,
+        ("DCHMF", 1, True, True, False): 5,
+    }
+    # The two terminators of a linear dimension are the measurement apart.
+    for dimension in packed.dimensions:
+        if dimension.mi_type == "DSGL":
+            first, second = dimension.graphics.arrows
+            assert first.tip.distance_to(second.tip) == pytest.approx(dimension.measurement)
+    # Every terminator names a DAF: shape 1, lengths not relative to the text, and a
+    # width of 0.26 of the length. Four terminators are stored without being drawn.
+    arrows = [arrow for graphics in drawn for arrow in graphics.arrows]
+    assert Counter(arrow.display_value for arrow in arrows) == {1: 76, 0: 4}
+    assert all(isinstance(arrow.style, ezmi2d.DimensionArrowProperty) for arrow in arrows)
+    assert {(arrow.style.shape_value, arrow.style.relative_size) for arrow in arrows} == {
+        (1, False)
+    }
+    assert all(
+        arrow.style.width() == pytest.approx(0.26 * arrow.style.length()) for arrow in arrows
+    )
+    assert all(arrow.outline() is not None for arrow in arrows)
+    # Every arc piece ends on the radius it starts on.
+    arcs = [arc for graphics in drawn for arc in graphics.arcs]
+    assert len(arcs) == 17
+    assert all(arc.center.distance_to(arc.end) == pytest.approx(arc.radius) for arc in arcs)
+    # A tolerance is placed by its layout: one text, an upper and a lower text, or two
+    # limits in place of the main text. The pointer names the DTV of the dimension.
+    placements = [graphics.tolerance for graphics in drawn if graphics.tolerance is not None]
+    assert Counter(placement.layout_value for placement in placements) == {1: 1, 2: 7, 3: 2}
+    assert all(placement.tolerance is not None for placement in placements)
+    assert {placement.tolerance_id for placement in placements} == {
+        tolerance.id for tolerance in packed.dimension_tolerances
+    }
+    # Texts beside the main text: before it, after it, or in a row below it.
+    parts = [part for graphics in drawn for part in graphics.text_parts]
+    assert Counter(part.role for part in parts) == {"prefix": 23, "postfix": 10, "subfix": 3}
+    assert all(
+        isinstance(part.text_attribute, ezmi2d.DimensionTextAttributeProperty) for part in parts
+    )
     assert all(
         len(leader.vertices) == 2
         and len(leader.points) == 2

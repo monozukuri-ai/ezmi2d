@@ -127,7 +127,9 @@ ezmi2d inspect drawing.mi --json --records
 - De Boor evaluation for `BSPL`, including rational weights when a verified layout records them
 - typed dimension (`DANG`, `DCHMF`, `DDIA`, `DRAD`, `DSGL`) references, measurement,
   formatted text, placement, DDA/DTF style, the DTA text attribute with the text height
-  (`text_height`), the stored text box, and linked `DTV` tolerances
+  (`text_height`), the stored text box, linked `DTV` tolerances, and the drawn form the
+  file stores with the dimension (`graphics`: terminators, dimension and extension line
+  pieces, arcs, and where the main, tolerance, prefix and postfix texts start)
 - drawable `LED` vertices, `SYML` components, and associative `HAT` patterns/boundaries through
   typed `COC`, `PFA`, and `HAPP` records
 - typed `Affine2D`, nested/shared `ASSE` occurrence traversal, composed child-to-parent transforms,
@@ -185,8 +187,9 @@ public Creo bundle: 87,506 compressed bytes expand to 393,805 logical bytes.
 Its 853 lines, 187 arcs, 88 B-splines, 76 circles, 57 texts, 88 typed annotations,
 11 hatch contours, 9 hatch associations, 25-part hierarchy, and sheet association produce
 identical semantic models and diagnostics from compressed and expanded input. All 46 dimensions
-resolve their source geometry and point references; all 16 symbols resolve three graphic
-components. One COC member is a retained unsupported `PLN` record.
+resolve their source geometry and point references and carry a typed drawn form; all 16
+symbols resolve three graphic components. One COC member is a retained unsupported `PLN`
+record.
 
 ## Distribution
 
