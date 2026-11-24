@@ -7,8 +7,9 @@ use crate::model::{
     DimensionSegment, DimensionTextAttributeProperty, DimensionTextPart, DimensionToleranceEntity,
     DimensionTolerancePlacement, EncodingInfo, EntityHeader, EntityId, GlobalInfo, GraphicHeader,
     HatchAssociationEntity, HatchEntity, HatchPatternLine, HatchPatternProperty, LeaderEntity,
-    LeaderPoint, LineEntity, Part, PartStatusProperty, Point2, PointEntity, PropertyEntity,
-    SemanticDocument, SemanticEntity, SymbolEntity, TextEntity, TextValue, UnsupportedEntity,
+    LeaderPoint, LineEntity, Part, PartPlacement, PartStatusProperty, Point2, PointEntity,
+    PropertyEntity, SemanticDocument, SemanticEntity, SymbolEntity, TextEntity, TextValue,
+    UnsupportedEntity,
 };
 use crate::{
     scan_input, Diagnostic, DiagnosticSeverity, EncodingSource, MiError, RawDocument, RawRecord,
@@ -1530,7 +1531,7 @@ fn parse_assembly(
     let property_ids = (0..property_count)
         .map(|offset| required_u64(fields, 3 + offset, "assembly property pointer"))
         .collect::<Result<Vec<_>, _>>()?;
-    let instances = parse_assembly_instances(fields, name_index)?;
+    let (instances, modern) = parse_assembly_children(fields, name_index)?;
     Ok(SemanticEntity::Assembly(AssemblyEntity {
         entity,
         property_ids,
@@ -1543,22 +1544,90 @@ fn parse_assembly(
             diagnostics,
             "assembly part name",
         ),
+        placement: assembly_placement(fields, name_index, modern),
         instances,
         definition_part_index: None,
         values: fields.iter().skip(2).map(|field| field.to_vec()).collect(),
     }))
 }
 
+/// The children of an ASSE record, and whether the record has the later layout.
+///
+/// Later records write five values between the name and the child count; legacy ones
+/// (MI 2.10) write two values and the child count. A record is read in the layout that
+/// consumes it exactly: the later one first, the legacy one when that does not fit.
+fn parse_assembly_children(
+    fields: &[&[u8]],
+    name_index: usize,
+) -> Result<(Vec<AssemblyInstance>, bool), String> {
+    // A legacy record without children ends after its three values.
+    if fields.len() <= name_index + 6 {
+        return match parse_legacy_assembly_instances(fields, name_index) {
+            Some(instances) => Ok((instances, false)),
+            None => Ok((Vec::new(), false)),
+        };
+    }
+    match parse_assembly_instances(fields, name_index) {
+        Ok(instances) => Ok((instances, true)),
+        Err(error) => parse_legacy_assembly_instances(fields, name_index)
+            .map(|instances| (instances, false))
+            .ok_or(error),
+    }
+}
+
+/// Children of a legacy ASSE record: the child count is the third value after the name,
+/// and each child holds three values, its member count and members, the child ASSE and
+/// nine transform values, with nothing between the children or after the last.
+fn parse_legacy_assembly_instances(
+    fields: &[&[u8]],
+    name_index: usize,
+) -> Option<Vec<AssemblyInstance>> {
+    let child_count = parse_usize(fields.get(name_index + 3)?)?;
+    let mut cursor = name_index + 4;
+    // Fourteen fields at least for each child: the count cannot exceed the record.
+    if child_count > fields.len().saturating_sub(cursor) / 14 {
+        return None;
+    }
+    let mut instances = Vec::with_capacity(child_count);
+    for _ in 0..child_count {
+        let definition_values = [
+            fields.get(cursor)?.to_vec(),
+            fields.get(cursor + 1)?.to_vec(),
+            fields.get(cursor + 2)?.to_vec(),
+        ];
+        let member_count = parse_usize(fields.get(cursor + 3)?)?;
+        cursor += 4;
+        let members_end = cursor.checked_add(member_count)?;
+        let member_ids = fields
+            .get(cursor..members_end)?
+            .iter()
+            .map(|field| parse_u64(field))
+            .collect::<Option<Vec<_>>>()?;
+        cursor = members_end;
+        let assembly_id = parse_u64(fields.get(cursor)?)?;
+        cursor += 1;
+        let transform_values =
+            parse_f64_array::<9>(fields, cursor, "assembly child transform").ok()?;
+        cursor += 9;
+        instances.push(AssemblyInstance {
+            relation_value: None,
+            definition_values,
+            member_ids,
+            assembly_id,
+            transform_values,
+            target_part_index: None,
+            is_sheet: false,
+        });
+    }
+    (fields.len() == cursor).then_some(instances)
+}
+
 fn parse_assembly_instances(
     fields: &[&[u8]],
     name_index: usize,
 ) -> Result<Vec<AssemblyInstance>, String> {
-    // Legacy ASSE records end after three placement values and have no serialized children.
     let child_count_index = name_index + 6;
-    if fields.len() <= child_count_index {
-        return Ok(Vec::new());
-    }
-    let child_count = required_usize(fields, child_count_index, "assembly child count")?;
+    let child_count = assembly_child_count(fields, child_count_index)?;
     if child_count == 0 {
         if fields.len() != child_count_index + 1 {
             return Err("ASSE zero-child layout has unexpected trailing fields".to_owned());
@@ -1626,6 +1695,42 @@ fn parse_assembly_instances(
     }
     required_usize(fields, cursor, "assembly definition ordinal")?;
     Ok(instances)
+}
+
+/// Scale and offset of the part, from the first three values after its name.
+///
+/// Records that serialize children write five values between the name and the child
+/// count: the scale of the part, the offset of its coordinates on the sheet, and two more
+/// values that are left in `AssemblyEntity::values`. A point of the part is drawn at
+/// `scale * point + offset` in sheet coordinates; parts nested in each other each state
+/// their own. Legacy records hold values of another meaning and give `None`, as does a
+/// scale that is not a positive finite number.
+fn assembly_placement(fields: &[&[u8]], name_index: usize, modern: bool) -> Option<PartPlacement> {
+    if !modern {
+        return None;
+    }
+    let scale = finite_f64_field(fields, name_index + 1)?;
+    let offset = Point2::new(
+        finite_f64_field(fields, name_index + 2)?,
+        finite_f64_field(fields, name_index + 3)?,
+    );
+    (scale > 0.0).then_some(PartPlacement { scale, offset })
+}
+
+/// Number of child entries an ASSE record holds, read from its child count field.
+///
+/// Some files write the count as its ones' complement (`-1` for no children, `-2` for one,
+/// `-4` for three). The record then holds `-(value) - 1` child entries in the usual
+/// layout, and the caller checks that they fill the record exactly. What the complemented
+/// form stands for is not established: the written value stays in `AssemblyEntity::values`.
+fn assembly_child_count(fields: &[&[u8]], index: usize) -> Result<usize, String> {
+    let value = fields
+        .get(index)
+        .and_then(|field| parse_i64(field))
+        .ok_or_else(|| format!("assembly child count at field {index} is not an integer"))?;
+    let count = if value < 0 { !value } else { value };
+    usize::try_from(count)
+        .map_err(|_| format!("assembly child count at field {index} is out of range"))
 }
 
 fn parse_text(
@@ -3121,5 +3226,83 @@ mod tests {
         ];
 
         assert_eq!(assembly_name_index(&fields), Some(5));
+    }
+
+    fn asse<'a>(after_name: &[&'a [u8]]) -> Vec<&'a [u8]> {
+        let mut fields: Vec<&[u8]> = vec![b"ASSE", b"7", b"1", b"2", b"Part"];
+        fields.extend_from_slice(after_name);
+        fields
+    }
+
+    const IDENTITY: [&[u8]; 9] = [b"1", b"0", b"0", b"0", b"1", b"0", b"0", b"0", b"1"];
+
+    #[test]
+    fn reads_the_children_of_legacy_assembly_records() {
+        // Two values and the child count after the name; each child holds three values, its
+        // member count and members, the child ASSE and nine transform values. No separator
+        // between the children and no ordinal at the end.
+        let mut after_name: Vec<&[u8]> = vec![b"12.5", b"-3", b"2"];
+        after_name.extend_from_slice(&[b"0", b"0", b"0", b"2", b"4", b"13", b"29"]);
+        after_name.extend_from_slice(&IDENTITY);
+        after_name.extend_from_slice(&[b"0", b"0", b"0", b"0", b"31"]);
+        after_name.extend_from_slice(&IDENTITY);
+        let fields = asse(&after_name);
+
+        let (instances, modern) = parse_assembly_children(&fields, 4).unwrap();
+
+        assert!(!modern);
+        assert_eq!(instances.len(), 2);
+        assert_eq!(instances[0].member_ids, vec![4, 13]);
+        assert_eq!(instances[0].assembly_id, 29);
+        assert_eq!(instances[1].member_ids, Vec::<EntityId>::new());
+        assert_eq!(instances[1].assembly_id, 31);
+        assert!(instances
+            .iter()
+            .all(|instance| instance.relation_value.is_none()));
+        assert_eq!(instances[1].transform_values[4], 1.0);
+        // Such a record states no scale: its first value is not one.
+        assert!(assembly_placement(&fields, 4, modern).is_none());
+    }
+
+    #[test]
+    fn a_legacy_assembly_record_that_does_not_fit_is_reported() {
+        // One child announced, the record ends one value early.
+        let mut after_name: Vec<&[u8]> = vec![b"12.5", b"-3", b"1"];
+        after_name.extend_from_slice(&[b"0", b"0", b"0", b"0", b"31"]);
+        after_name.extend_from_slice(&IDENTITY[..8]);
+        let fields = asse(&after_name);
+
+        assert!(parse_assembly_children(&fields, 4).is_err());
+    }
+
+    #[test]
+    fn reads_the_scale_only_from_records_that_write_it() {
+        let childless_legacy = asse(&[b"12.5", b"-3", b"0"]);
+        let (instances, modern) = parse_assembly_children(&childless_legacy, 4).unwrap();
+        assert!(instances.is_empty() && !modern);
+        assert!(assembly_placement(&childless_legacy, 4, modern).is_none());
+
+        let later = asse(&[b"0.5", b"3", b"-4", b"7", b"8", b"0"]);
+        let (instances, modern) = parse_assembly_children(&later, 4).unwrap();
+        assert!(instances.is_empty() && modern);
+        let placement = assembly_placement(&later, 4, modern).unwrap();
+        assert_eq!(placement.scale, 0.5);
+        assert_eq!((placement.offset.x, placement.offset.y), (3.0, -4.0));
+    }
+
+    #[test]
+    fn reads_plain_and_complemented_assembly_child_counts() {
+        let count = |value: &'static [u8]| assembly_child_count(&[value], 0);
+
+        assert_eq!(count(b"0"), Ok(0));
+        assert_eq!(count(b"7"), Ok(7));
+        assert_eq!(count(b"-1"), Ok(0));
+        assert_eq!(count(b"-2"), Ok(1));
+        assert_eq!(count(b" -4 "), Ok(3));
+        assert!(count(b"1.5").unwrap_err().contains("not an integer"));
+        assert!(count(b"").unwrap_err().contains("not an integer"));
+        assert!(assembly_child_count(&[], 0)
+            .unwrap_err()
+            .contains("not an integer"));
     }
 }

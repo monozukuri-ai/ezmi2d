@@ -403,6 +403,39 @@ def test_product_generated_compressed_mi_matches_its_logical_payload() -> None:
     assert packed.diagnostics == logical.diagnostics
 
 
+def test_product_drawing_places_its_views_at_their_scales() -> None:
+    if not PTC_LOGICAL_MI.is_file():
+        pytest.skip("PTC compressed MI corpus has not been downloaded")
+    document = ezmi2d.read(PTC_LOGICAL_MI)
+
+    # The frame and the symbols are drawn 1:1, the views 2:1, a section 6:1 and a detail
+    # 20:1, as the drawing labels them ("SCALE 6:1", "SCALE 20:1"). None is moved.
+    scales = Counter(assembly.scale for assembly in document.assemblies)
+    assert scales == {2.0: 13, 1.0: 7, 6.0: 3, 20.0: 2}
+    assert all(assembly.offset == ezmi2d.Vec2(0.0, 0.0) for assembly in document.assemblies)
+
+    def defining_points(entity: ezmi2d.Graphic) -> list[ezmi2d.Vec2]:
+        values = (getattr(entity, name, None) for name in ("start", "end", "center"))
+        return [value for value in values if value is not None]
+
+    frame = next(part for part in document.parts if part.name == "STAR1")
+    frame_points = [point for entity in frame.entities for point in defining_points(entity)]
+    left, right = min(p.x for p in frame_points), max(p.x for p in frame_points)
+    bottom, top = min(p.y for p in frame_points), max(p.y for p in frame_points)
+
+    placed = [
+        item.world_transform.transform_point(point)
+        for item in document.iter_placed_graphics()
+        if item.occurrence.part is not frame
+        for point in defining_points(item.entity)
+    ]
+    # Everything lies on the sheet, and the views fill it: drawn at their stored size they
+    # would cover less than half its width, on top of each other.
+    assert all(left <= p.x <= right and bottom <= p.y <= top for p in placed)
+    assert max(p.x for p in placed) - min(p.x for p in placed) > 0.9 * (right - left)
+    assert max(p.y for p in placed) - min(p.y for p in placed) > 0.8 * (top - bottom)
+
+
 def _geometry_is_resolved(entity: ezmi2d.Graphic) -> bool:
     if isinstance(entity, ezmi2d.Line):
         return entity.start is not None and entity.end is not None

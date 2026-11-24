@@ -215,6 +215,116 @@ fn decodes_phase5_curves_annotations_and_part_structure() {
 }
 
 #[test]
+fn reads_assembly_child_counts_written_as_ones_complement() {
+    // The tree of phase5.mi, with the child counts of the root (2), one sheet (1) and the
+    // leaf (0) written as -3, -2 and -1.
+    let data = replace_once(
+        PHASE5_MI,
+        b"Drawing\n0\n0\n0\n0\n0\n2\n",
+        b"Drawing\n0\n0\n0\n0\n0\n-3\n",
+    );
+    let data = replace_once(
+        &data,
+        b"SheetA\n0\n0\n0\n0\n0\n1\n",
+        b"SheetA\n0\n0\n0\n0\n0\n-2\n",
+    );
+    let data = replace_once(
+        &data,
+        b"Leaf\n0\n0\n0\n0\n0\n0\n|~",
+        b"Leaf\n0\n0\n0\n0\n0\n-1\n|~",
+    );
+
+    let plain = read(PHASE5_MI, ScanOptions::default()).unwrap();
+    let document = read(&data, ScanOptions::default()).unwrap();
+
+    assert_eq!(document.top_part_index, Some(3));
+    assert_eq!(document.root_part_indices, vec![3]);
+    assert_eq!(document.sheet_part_indices, vec![1, 2]);
+    assert_eq!(document.parts[0].parent_part_indices, vec![1, 2]);
+    assert_eq!(document.parts[3].child_part_indices, vec![1, 2]);
+    for id in [3, 4, 6] {
+        let SemanticEntity::Assembly(assembly) = document.entity(id).unwrap() else {
+            panic!("entity {id} is not an assembly")
+        };
+        let SemanticEntity::Assembly(expected) = plain.entity(id).unwrap() else {
+            panic!("entity {id} is not an assembly")
+        };
+        assert_eq!(assembly.instances, expected.instances);
+    }
+    // The written value stays readable: the meaning of the complemented form is not established.
+    let SemanticEntity::Assembly(root) = document.entity(6).unwrap() else {
+        panic!("entity 6 is not an assembly")
+    };
+    assert!(root.values.iter().any(|value| value.as_slice() == b"-3"));
+    assert_eq!(document.diagnostics.len(), plain.diagnostics.len());
+}
+
+#[test]
+fn rejects_a_complemented_assembly_child_count_that_does_not_fit_the_record() {
+    // -4 announces three children; the record holds two.
+    let data = replace_once(
+        PHASE5_MI,
+        b"Drawing\n0\n0\n0\n0\n0\n2\n",
+        b"Drawing\n0\n0\n0\n0\n0\n-4\n",
+    );
+
+    let document = read(&data, ScanOptions::default()).unwrap();
+
+    assert!(document.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "MI_INVALID_ENTITY_RECORD"
+            && diagnostic.message.contains("ASSE entity 6")
+            && diagnostic.message.contains("declares 3 children")
+    }));
+}
+
+#[test]
+fn reads_the_scale_and_offset_a_part_is_drawn_with() {
+    // phase5.mi writes zeros after the part names. Here SheetB is drawn at 1:2, moved by
+    // (3, -4) on the sheet.
+    let data = replace_once(
+        PHASE5_MI,
+        b"SheetB\n0\n0\n0\n0\n0\n1\n",
+        b"SheetB\n0.5\n3\n-4\n7\n8\n1\n",
+    );
+
+    let document = read(&data, ScanOptions::default()).unwrap();
+
+    let SemanticEntity::Assembly(sheet_b) = document.entity(5).unwrap() else {
+        panic!("entity 5 is not an assembly")
+    };
+    let placement = sheet_b.placement.as_ref().unwrap();
+    assert_eq!(placement.scale, 0.5);
+    assert_eq!((placement.offset.x, placement.offset.y), (3.0, -4.0));
+    // A scale that is not a positive number is not a scale: the fixture's zeros say nothing.
+    let SemanticEntity::Assembly(sheet_a) = document.entity(4).unwrap() else {
+        panic!("entity 4 is not an assembly")
+    };
+    assert!(sheet_a.placement.is_none());
+    // The tree is as before.
+    assert_eq!(document.top_part_index, Some(3));
+    assert_eq!(document.sheet_part_indices, vec![1, 2]);
+}
+
+#[test]
+fn legacy_assembly_records_state_no_scale() {
+    // geometry.mi ends its ASSE record after three values: no scale is written there.
+    let document = read(GEOMETRY_MI, ScanOptions::default()).unwrap();
+
+    let assemblies = document
+        .entities
+        .iter()
+        .filter_map(|entity| match entity {
+            SemanticEntity::Assembly(assembly) => Some(assembly),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(!assemblies.is_empty());
+    assert!(assemblies
+        .iter()
+        .all(|assembly| assembly.placement.is_none()));
+}
+
+#[test]
 fn decodes_modern_variable_prefix_arc_from_terminal_point_fields() {
     let legacy = b"ARC\n11\n3\n0\n1\n1\n2\n6\n7\n8\n0\n|~";
     let modern = b"ARC\n11\n7\n0\n0.5\n0\n7\n422\n677\n847\n120\n122\n99\n6\n7\n8\n0\n|~";

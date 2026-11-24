@@ -597,11 +597,22 @@ pub struct AssemblyInstance {
     pub is_sheet: bool,
 }
 
+/// How the coordinates of a part map to the sheet: a point of the part is drawn at
+/// `scale * point + offset`, whatever part it is placed in.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartPlacement {
+    pub scale: f64,
+    pub offset: Point2,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AssemblyEntity {
     pub entity: EntityHeader,
     pub property_ids: Vec<EntityId>,
     pub part_name: Option<TextValue>,
+    /// Scale and offset of the part. `None` for legacy records, which do not write them,
+    /// and when the written scale is not a positive finite number.
+    pub placement: Option<PartPlacement>,
     pub instances: Vec<AssemblyInstance>,
     pub definition_part_index: Option<usize>,
     pub values: Vec<Vec<u8>>,

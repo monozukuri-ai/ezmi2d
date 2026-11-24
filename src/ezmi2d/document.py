@@ -152,6 +152,14 @@ class Part:
 
 
 @dataclass(frozen=True, slots=True)
+class PartPlacement:
+    """Scale and offset a part's geometry is drawn with: ``scale * point + offset``."""
+
+    scale: float
+    offset: Vec2
+
+
+@dataclass(frozen=True, slots=True)
 class InstancePathStep:
     """Stable identity for one child entry in an ASSE record."""
 
@@ -355,7 +363,7 @@ class Document:
                         raise ValueError(f"assembly cycle at instance path {path!r}")
                     continue
                 try:
-                    local_transform = instance.to_affine2d()
+                    local_transform = self.instance_transform(occurrence.part, instance)
                 except (TypeError, ValueError):
                     if strict:
                         raise
@@ -374,6 +382,51 @@ class Document:
                 )
                 children.append((child_occurrence, (*ancestry, target_index)))
             stack.extend(reversed(children))
+
+    def part_placement(self, part: Part) -> PartPlacement | None:
+        """Return the scale and offset the part's geometry is drawn with on the sheet.
+
+        A point ``p`` of the part lies at ``scale * p + offset`` in sheet coordinates,
+        whatever part it is placed in: a view drawn at 1:5 holds geometry five times the
+        size it has on the sheet. The scale is the one the part's ``ASSE`` record states,
+        except for parts whose status (the second ``PSTAT`` value) says their geometry is
+        kept in sheet units, such as frames, title blocks and symbols: those are drawn at
+        full size. ``None`` when the record states no scale.
+        """
+
+        assembly = part.assembly
+        if assembly is None or assembly.scale is None or assembly.offset is None:
+            return None
+        status = next(
+            (
+                entity
+                for entity in map(self.get, assembly.property_ids)
+                if isinstance(entity, PartStatusProperty)
+            ),
+            None,
+        )
+        in_sheet_units = status is not None and status.scale_modifiable
+        return PartPlacement(
+            scale=1.0 if in_sheet_units else assembly.scale,
+            offset=assembly.offset,
+        )
+
+    def instance_transform(self, parent: Part, instance: AssemblyInstance) -> Affine2D:
+        """Return the child-to-parent transform of one placement.
+
+        The transform maps the child's coordinates into the parent's from where each part
+        lies on the sheet (``part_placement``), then applies the placement's own matrix.
+        Parts that state no scale are taken as they are.
+        """
+
+        local = instance.to_affine2d()
+        target_index = instance.target_part_index
+        if target_index is None or not (0 <= target_index < len(self.parts)):
+            return local
+        relative = _relative_placement(
+            self.part_placement(parent), self.part_placement(self.parts[target_index])
+        )
+        return local.compose(relative)
 
     def iter_instances(
         self,
@@ -400,6 +453,26 @@ class Document:
         for occurrence in self.iter_part_occurrences(root, strict=strict):
             for entity in occurrence.part.entities:
                 yield PlacedGraphic(entity=entity, occurrence=occurrence)
+
+
+def _relative_placement(parent: PartPlacement | None, child: PartPlacement | None) -> Affine2D:
+    """Map the child's coordinates to the parent's from where each lies on the sheet.
+
+    On the sheet a point ``p`` of a part lies at ``scale * p + offset``. Equating the two
+    parts' sheet positions gives the child point in the parent's coordinates.
+    """
+
+    if parent is None or child is None:
+        return Affine2D.identity()
+    factor = child.scale / parent.scale
+    return Affine2D(
+        a=factor,
+        b=0.0,
+        c=0.0,
+        d=factor,
+        tx=(child.offset.x - parent.offset.x) / parent.scale,
+        ty=(child.offset.y - parent.offset.y) / parent.scale,
+    )
 
 
 Drawing = Document
@@ -737,6 +810,8 @@ def _assembly_from_core(row: Mapping[str, Any], raw_records: tuple[Any, ...]) ->
             None if row["definition_part_index"] is None else int(row["definition_part_index"])
         ),
         values=tuple(bytes(item) for item in row["values"]),
+        scale=None if row["scale"] is None else float(row["scale"]),
+        offset=None if row["offset"] is None else _vec_from_core(_mapping(row["offset"])),
     )
 
 

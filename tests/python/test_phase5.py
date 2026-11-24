@@ -191,6 +191,99 @@ def test_nested_shared_parts_and_multiple_sheets_are_resolved() -> None:
     assert tuple(item.world_transform.tx for item in placed) == (0.0, 0.0, 10.0, 10.0)
 
 
+def _with_part_placements(data: bytes) -> bytes:
+    """``phase5.mi`` with the sheets drawn 1:1 and the leaf drawn 1:5, moved by (3, -4)."""
+
+    for name, placement in (
+        (b"Drawing", b"1\n0\n0"),
+        (b"SheetA", b"1\n0\n0"),
+        (b"SheetB", b"1\n0\n0"),
+        (b"Leaf", b"0.2\n3\n-4"),
+    ):
+        old = name + b"\n0\n0\n0\n0\n0\n"
+        assert data.count(old) == 1
+        data = data.replace(old, name + b"\n" + placement + b"\n0\n0\n")
+    return data
+
+
+def test_parts_state_the_scale_and_offset_they_are_drawn_with() -> None:
+    plain = ezmi2d.read(FIXTURE)
+    assert all(part.assembly.scale is None for part in plain.parts)
+    assert all(part.assembly.offset is None for part in plain.parts)
+
+    document = ezmi2d.read(_with_part_placements(FIXTURE.read_bytes()))
+    leaf, sheet_a, _sheet_b, drawing = document.parts
+    assert leaf.assembly.scale == pytest.approx(0.2)
+    assert leaf.assembly.offset == ezmi2d.Vec2(3.0, -4.0)
+    assert drawing.assembly.scale == pytest.approx(1.0)
+    assert drawing.assembly.offset == ezmi2d.Vec2(0.0, 0.0)
+
+    # A point p of the leaf lies at 0.2 * p + (3, -4) on the sheet. The sheets are drawn
+    # 1:1, so that is where it lies in their coordinates; SheetB is placed 10 to the right.
+    in_sheet_a = document.instance_transform(sheet_a, sheet_a.instances[0])
+    assert in_sheet_a == ezmi2d.Affine2D(a=0.2, b=0.0, c=0.0, d=0.2, tx=3.0, ty=-4.0)
+    occurrences = tuple(document.iter_instances())
+    assert tuple(occurrence.part.index for occurrence in occurrences) == (1, 0, 2, 0)
+    assert tuple(occurrence.world_transform.a for occurrence in occurrences) == pytest.approx(
+        (1.0, 0.2, 1.0, 0.2)
+    )
+    assert tuple(occurrence.world_transform.tx for occurrence in occurrences) == pytest.approx(
+        (0.0, 3.0, 10.0, 13.0)
+    )
+    assert tuple(occurrence.world_transform.ty for occurrence in occurrences) == pytest.approx(
+        (0.0, -4.0, 0.0, -4.0)
+    )
+
+
+def test_a_part_placed_in_a_scaled_part_is_measured_in_that_parts_units() -> None:
+    # The leaf at 1:5 inside a sheet at 1:2, itself moved by (1, 1): the leaf point p lies
+    # at 0.2 * p + (3, -4) on the sheet, a sheet point q at 0.5 * q + (1, 1).
+    data = _with_part_placements(FIXTURE.read_bytes())
+    old = b"SheetA\n1\n0\n0\n0\n0\n"
+    assert data.count(old) == 1
+    document = ezmi2d.read(data.replace(old, b"SheetA\n0.5\n1\n1\n0\n0\n"))
+    sheet_a = document.parts[1]
+
+    transform = document.instance_transform(sheet_a, sheet_a.instances[0])
+
+    assert transform.a == pytest.approx(0.4)
+    assert transform.d == pytest.approx(0.4)
+    assert (transform.tx, transform.ty) == pytest.approx((4.0, -10.0))
+    point = ezmi2d.Vec2(10.0, 20.0)
+    on_sheet = ezmi2d.Vec2(0.2 * point.x + 3.0, 0.2 * point.y - 4.0)
+    in_parent = transform.transform_point(point)
+    assert (0.5 * in_parent.x + 1.0, 0.5 * in_parent.y + 1.0) == pytest.approx(
+        (on_sheet.x, on_sheet.y)
+    )
+
+
+def test_a_part_kept_in_sheet_units_is_drawn_at_full_size() -> None:
+    # The second PSTAT value marks parts whose geometry is kept in sheet units (frames,
+    # title blocks, symbols): the scale their record states does not apply to them.
+    data = _with_part_placements(FIXTURE.read_bytes())
+    old = b"PSTAT\n1\n0\n0\n|~"
+    assert data.count(old) == 1
+    document = ezmi2d.read(data.replace(old, b"PSTAT\n1\n0\n1\n|~"))
+    leaf, sheet_a, _sheet_b, _drawing = document.parts
+
+    assert leaf.assembly.scale == pytest.approx(0.2)
+    placement = document.part_placement(leaf)
+    assert placement is not None
+    assert placement.scale == pytest.approx(1.0)
+    assert placement.offset == ezmi2d.Vec2(3.0, -4.0)
+    in_sheet_a = document.instance_transform(sheet_a, sheet_a.instances[0])
+    assert in_sheet_a == ezmi2d.Affine2D(a=1.0, b=0.0, c=0.0, d=1.0, tx=3.0, ty=-4.0)
+
+
+def test_part_placement_is_absent_when_the_record_states_no_scale() -> None:
+    document = ezmi2d.read(FIXTURE)
+
+    assert all(document.part_placement(part) is None for part in document.parts)
+    plain = ezmi2d.read(_with_part_placements(FIXTURE.read_bytes()))
+    placement = plain.part_placement(plain.parts[0])
+    assert placement == ezmi2d.PartPlacement(scale=0.2, offset=ezmi2d.Vec2(3.0, -4.0))
+
+
 def test_affine_composition_applies_child_before_parent() -> None:
     parent = ezmi2d.Affine2D(a=0.0, b=1.0, c=-1.0, d=0.0, tx=10.0, ty=20.0)
     child = ezmi2d.Affine2D(a=1.0, b=0.0, c=0.0, d=1.0, tx=2.0, ty=3.0)

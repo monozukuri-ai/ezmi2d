@@ -309,11 +309,20 @@ class HatchPatternProperty(Property):
 
 @dataclass(frozen=True, slots=True)
 class Assembly(MiEntity):
+    """ASSE record of one part: its name, scale and offset, and the parts it places.
+
+    A point of the part is drawn at ``scale * point + offset`` in sheet coordinates,
+    whatever part it is placed in. ``scale`` and ``offset`` are ``None`` for legacy
+    records, which do not write them, and when the written scale is not a positive number.
+    """
+
     property_ids: tuple[int, ...]
     part_name_value: TextValue | None
     instances: tuple[AssemblyInstance, ...]
     definition_part_index: int | None
     values: tuple[bytes, ...]
+    scale: float | None = None
+    offset: Vec2 | None = None
 
     @property
     def part_name(self) -> str | None:

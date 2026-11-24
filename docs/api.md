@@ -63,6 +63,28 @@ Shared parts are yielded once per path. Each `PartOccurrence` carries
 Unbound, cyclic, or non-affine branches raise by default; `strict=False` omits
 them without inventing a placement.
 
+### Part scale and offset
+
+Every part is drawn at its own scale: a view at 1:5 holds geometry five times
+the size it has on the sheet, next to a frame kept at 1:1. `Assembly.scale`
+and `Assembly.offset` are the scale and the offset the part's `ASSE` record
+states; both are `None` for legacy records, which do not write them, and when
+the written scale is not a positive number.
+
+`Document.part_placement(part)` returns the `PartPlacement` the geometry is
+drawn with: a point `p` of the part lies at `scale * p + offset` in sheet
+coordinates, whatever part it is placed in. The scale is the written one,
+except for parts whose status says their geometry is kept in sheet units
+(the second `PSTAT` value, `PartStatusProperty.scale_modifiable`; frames, title
+blocks and symbols): those are drawn at full size, with their offset.
+
+`Document.instance_transform(parent, instance)` is the child-to-parent
+transform of one placement with both parts' placements taken in, followed by
+the placement's own matrix. `PartOccurrence.local_transform` and
+`world_transform` use it, so `iter_placed_graphics()` and
+`draw(..., expand_instances=True)` show the parts at the sizes the drawing
+shows them. `world_transform` maps into the coordinates of the root part.
+
 ### Assembly transform convention
 
 `AssemblyInstance.to_affine2d()` converts the serialized nine values to an
@@ -148,7 +170,7 @@ Every entity derives from the frozen `MiEntity` data model and retains `id`, `mi
 | `DTF`, `DDA`, `DLA` | dimension property subclasses | typed numeric tables; unverified enumerations remain ordered values |
 | `DAF` | `DimensionArrowProperty` | `shape_value`, `filling_value`, `relative_size`, `length()` and `width()` of a dimension terminator; the numeric table stays in `definition_values` |
 | `HAPP` | `HatchPatternProperty` | ordered offset/distance/angle/color/linetype sub-patterns |
-| `ASSE` | `Assembly` | property IDs, definition part, child instances, 3x3 transforms |
+| `ASSE` | `Assembly` | property IDs, definition part, part `scale` and `offset`, child instances (in the legacy MI 2.10 layout too, and when the child count is written as its ones' complement), 3x3 transforms |
 | other addressable records | `UnsupportedEntity` | ID, ownership, and complete raw record |
 
 Fields whose meaning has not been verified remain `bytes` in `values`, `definition_values`, or

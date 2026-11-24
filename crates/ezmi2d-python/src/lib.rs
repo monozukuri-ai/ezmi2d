@@ -418,6 +418,16 @@ fn entity_dict<'py>(py: Python<'py>, entity: &SemanticEntity) -> PyResult<Bound<
                 instances.append(assembly_instance_dict(py, instance)?)?;
             }
             result.set_item("instances", instances)?;
+            match &assembly.placement {
+                Some(placement) => {
+                    result.set_item("scale", placement.scale)?;
+                    result.set_item("offset", point_dict(py, &placement.offset)?)?;
+                }
+                None => {
+                    result.set_item("scale", py.None())?;
+                    result.set_item("offset", py.None())?;
+                }
+            }
             result.set_item("definition_part_index", assembly.definition_part_index)?;
             result.set_item("values", byte_values(py, &assembly.values)?)?;
         }
